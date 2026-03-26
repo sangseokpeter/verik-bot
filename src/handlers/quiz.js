@@ -178,7 +178,16 @@ async function handleQuizCallback(bot, query) {
 
   // 맞으면 세션 점수 +1
   if (isCorrect) {
-    await supabase.rpc('increment_correct', { session_id_param: sessionId });
+    const { data: currentSession } = await supabase
+      .from('quiz_sessions')
+      .select('correct_answers')
+      .eq('id', sessionId)
+      .single();
+    
+    await supabase
+      .from('quiz_sessions')
+      .update({ correct_answers: (currentSession?.correct_answers || 0) + 1 })
+      .eq('id', sessionId);
   }
 
   // 틀린 단어 추적 업데이트
@@ -214,16 +223,17 @@ async function handleQuizCallback(bot, query) {
     await bot.sendMessage(chatId, feedback);
     await sendQuizQuestion(bot, chatId, sessionId, questions, nextIndex);
   } else {
-    // 퀴즈 완료
+    // 퀴즈 완료 — DB에서 최종 점수 읽기
     const { data: session } = await supabase
       .from('quiz_sessions')
       .select('*')
       .eq('id', sessionId)
       .single();
 
+    // 마지막 문제 정답도 반영
     const totalCorrect = (session?.correct_answers || 0) + (isCorrect ? 1 : 0);
     const totalQ = questions.length;
-    const pct = Math.round((totalCorrect / totalQ) * 100);
+    const pct = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
 
     await supabase.from('quiz_sessions').update({
       correct_answers: totalCorrect,
