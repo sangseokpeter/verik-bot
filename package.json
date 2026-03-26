@@ -1,0 +1,20 @@
+{
+  "name": "verik-bot",
+  "version": "1.0.0",
+  "description": "VERI-K Korean Learning Telegram Bot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "node-cron": "^3.0.3",
+    "openai": "^4.24.0",
+    "@anthropic-ai/sdk": "^0.32.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
