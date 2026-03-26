@@ -28,16 +28,25 @@ function generateCardHTML(word, illustrationUrl, index, total, dayNumber) {
     ? word.example_kr.replace(word.korean, `<span style="color:#1B2A4A;background:#E8EDF4;padding:2px 12px;border-radius:8px;">${word.korean}</span>`)
     : '';
 
+  const fontDir = require('path').resolve(__dirname, '../../fonts');
+  
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
+@font-face {
+  font-family: 'NotoSansKR';
+  src: url('file://${fontDir}/NotoSansKR-Regular.woff2') format('woff2');
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'NotoSansKR';
+  src: url('file://${fontDir}/NotoSansKR-Bold.woff2') format('woff2');
+  font-weight: 700;
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{width:760px;background:transparent;font-family:'Nanum Myeongjo','Nunito',sans-serif}
+body{width:760px;background:transparent;font-family:'NotoSansKR',sans-serif}
 </style>
 </head>
 <body>
@@ -63,22 +72,22 @@ body{width:760px;background:transparent;font-family:'Nanum Myeongjo','Nunito',sa
   <div style="padding:36px 48px 12px">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:baseline;gap:20px">
-        <span style="font-size:72px;font-weight:800;color:#1B2A4A;font-family:'Nanum Myeongjo',serif">${word.korean}</span>
-        <span style="font-size:30px;font-weight:700;color:#B0B0B0;font-family:'Nanum Myeongjo',serif">[${pron}]</span>
+        <span style="font-size:72px;font-weight:700;color:#1B2A4A;font-family:'NotoSansKR',sans-serif">${word.korean}</span>
+        <span style="font-size:30px;font-weight:400;color:#B0B0B0;font-family:'NotoSansKR',sans-serif">[${pron}]</span>
       </div>
-      <div style="background:#EEF2F7;color:#1B2A4A;font-size:22px;font-weight:800;padding:8px 24px;border-radius:16px;font-family:'Nanum Myeongjo',serif">${word.category}</div>
+      <div style="background:#EEF2F7;color:#1B2A4A;font-size:22px;font-weight:700;padding:8px 24px;border-radius:16px;font-family:'NotoSansKR',sans-serif">${word.category}</div>
     </div>
   </div>
   <div style="padding:0 48px 16px">
     <div style="background:#F0F7ED;border:3px solid #4CAF50;border-radius:20px;padding:16px 28px;text-align:center">
-      <span style="font-size:36px;font-weight:700;color:#2E7D32;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.meaning_khmer}</span>
+      <span style="font-size:36px;font-weight:700;color:#2E7D32">${word.meaning_khmer}</span>
     </div>
   </div>
   <div style="padding:0 48px 40px">
-    <p style="font-size:22px;font-weight:800;color:#C0C0C0;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px">EXAMPLE</p>
+    <p style="font-size:22px;font-weight:700;color:#C0C0C0;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px">EXAMPLE</p>
     <div style="background:#F9F9F9;border-radius:24px;padding:28px 32px">
-      <p style="font-size:30px;font-weight:700;color:#555;margin-bottom:8px;font-family:'Nanum Myeongjo',serif">${exampleKr}</p>
-      <p style="font-size:20px;font-weight:600;color:#AAA;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.example_khmer || ''}</p>
+      <p style="font-size:30px;font-weight:700;color:#555;margin-bottom:8px;font-family:'NotoSansKR',sans-serif">${exampleKr}</p>
+      <p style="font-size:20px;font-weight:400;color:#AAA">${word.example_khmer || ''}</p>
     </div>
   </div>
   <div style="height:8px;background:linear-gradient(90deg,#D4A843 0%,#F0D68A 50%,#D4A843 100%)"></div>
@@ -91,7 +100,7 @@ body{width:760px;background:transparent;font-family:'Nanum Myeongjo','Nunito',sa
 async function htmlToPng(html) {
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-gpu']
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-gpu', '--allow-file-access-from-files']
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 780, height: 1200 });
@@ -99,7 +108,7 @@ async function htmlToPng(html) {
   
   // 폰트 로딩 대기
   await page.evaluate(() => document.fonts.ready);
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 2000));
   
   const element = await page.$('body > div');
   const imageBuffer = await element.screenshot({ type: 'png', omitBackground: true });
