@@ -79,7 +79,7 @@ async function startQuiz(bot, msg, quizType = 'daily') {
   await sendQuizQuestion(bot, chatId, session.id, questions, 0);
 }
 
-// ── 문제 생성 (4지선다) — allWords에서 오답 뽑기 ──
+// ── 문제 생성 (4지선다) — 중복 없는 오답 보기 ──
 function generateQuestions(words, count, allWords) {
   if (!words || words.length === 0) return [];
   
@@ -88,19 +88,26 @@ function generateQuestions(words, count, allWords) {
   const selected = shuffled.slice(0, Math.min(count, shuffled.length));
   
   return selected.map(word => {
-    // 오답 3개를 전체 단어 풀에서 랜덤 뽑기
-    const otherWords = pool.filter(w => w.id !== word.id && w.meaning_khmer !== word.meaning_khmer);
-    const wrongOptions = otherWords
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3)
-      .map(w => w.meaning_khmer);
+    // 오답 3개: 정답과 다른 뜻 + 서로 겹치지 않는 것만
+    const usedMeanings = new Set([word.meaning_khmer]);
+    const wrongOptions = [];
+    
+    const candidates = pool
+      .filter(w => w.id !== word.id && w.meaning_khmer && w.meaning_khmer !== word.meaning_khmer)
+      .sort(() => Math.random() - 0.5);
 
-    // 오답이 3개 미만이면 더미 추가
+    for (const candidate of candidates) {
+      if (wrongOptions.length >= 3) break;
+      if (!usedMeanings.has(candidate.meaning_khmer)) {
+        usedMeanings.add(candidate.meaning_khmer);
+        wrongOptions.push(candidate.meaning_khmer);
+      }
+    }
+
     while (wrongOptions.length < 3) {
       wrongOptions.push('—');
     }
 
-    // 정답 포함 4개 옵션 섞기
     const options = [word.meaning_khmer, ...wrongOptions]
       .sort(() => Math.random() - 0.5);
 
