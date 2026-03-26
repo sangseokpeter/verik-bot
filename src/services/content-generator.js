@@ -33,10 +33,11 @@ function generateCardHTML(word, illustrationUrl, index, total, dayNumber) {
 <head>
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{width:760px;background:transparent;font-family:'Nunito',sans-serif}
+body{width:760px;background:transparent;font-family:'Nanum Myeongjo','Nunito',sans-serif}
 </style>
 </head>
 <body>
@@ -62,10 +63,10 @@ body{width:760px;background:transparent;font-family:'Nunito',sans-serif}
   <div style="padding:36px 48px 12px">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:baseline;gap:20px">
-        <span style="font-size:72px;font-weight:900;color:#1B2A4A">${word.korean}</span>
-        <span style="font-size:30px;font-weight:700;color:#B0B0B0">[${pron}]</span>
+        <span style="font-size:72px;font-weight:800;color:#1B2A4A;font-family:'Nanum Myeongjo',serif">${word.korean}</span>
+        <span style="font-size:30px;font-weight:700;color:#B0B0B0;font-family:'Nanum Myeongjo',serif">[${pron}]</span>
       </div>
-      <div style="background:#EEF2F7;color:#1B2A4A;font-size:22px;font-weight:800;padding:8px 24px;border-radius:16px">${word.category}</div>
+      <div style="background:#EEF2F7;color:#1B2A4A;font-size:22px;font-weight:800;padding:8px 24px;border-radius:16px;font-family:'Nanum Myeongjo',serif">${word.category}</div>
     </div>
   </div>
   <div style="padding:0 48px 16px">
@@ -76,7 +77,7 @@ body{width:760px;background:transparent;font-family:'Nunito',sans-serif}
   <div style="padding:0 48px 40px">
     <p style="font-size:22px;font-weight:800;color:#C0C0C0;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px">EXAMPLE</p>
     <div style="background:#F9F9F9;border-radius:24px;padding:28px 32px">
-      <p style="font-size:30px;font-weight:700;color:#555;margin-bottom:8px">${exampleKr}</p>
+      <p style="font-size:30px;font-weight:700;color:#555;margin-bottom:8px;font-family:'Nanum Myeongjo',serif">${exampleKr}</p>
       <p style="font-size:20px;font-weight:600;color:#AAA;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.example_khmer || ''}</p>
     </div>
   </div>
