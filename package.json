@@ -14,7 +14,7 @@
     "openai": "^4.24.0",
     "@anthropic-ai/sdk": "^0.32.0",
     "puppeteer": "^22.0.0",
-    "canvas": "^2.11.2"
+    "@napi-rs/canvas": "^0.1.44"
   },
   "engines": {
     "node": ">=18"
