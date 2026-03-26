@@ -91,11 +91,16 @@ body{width:760px;background:transparent;font-family:'Nanum Myeongjo','Nunito',sa
 async function htmlToPng(html) {
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-gpu']
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 780, height: 1200 });
-  await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+  await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+  
+  // 폰트 로딩 대기
+  await page.evaluate(() => document.fonts.ready);
+  await new Promise(r => setTimeout(r, 3000));
+  
   const element = await page.$('body > div');
   const imageBuffer = await element.screenshot({ type: 'png', omitBackground: true });
   await browser.close();
