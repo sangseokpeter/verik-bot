@@ -81,4 +81,45 @@ async function handleBroadcast(bot, msg, message) {
   );
 }
 
-module.exports = { handleAdminCommand, handleBroadcast, isAdmin, ADMIN_IDS };
+// ── /generate_cards [day] - 카드 이미지 생성 ──
+async function handleGenerateCards(bot, msg, dayNumber) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ 관리자 전용 명령어입니다.');
+  }
+
+  const day = parseInt(dayNumber);
+  if (isNaN(day) || day < 1 || day > 58) {
+    return bot.sendMessage(msg.chat.id, '⚠️ 사용법: /generate_cards [1-58]');
+  }
+
+  await bot.sendMessage(msg.chat.id, `🎨 Day ${day} 카드 생성을 시작합니다...`);
+  
+  const { generateCardsForDay } = require('../services/content-generator');
+  generateCardsForDay(bot, day);
+}
+
+// ── /generate_tts [day] - TTS 음성 생성 ──
+async function handleGenerateTTS(bot, msg, dayNumber) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ 관리자 전용 명령어입니다.');
+  }
+
+  const day = parseInt(dayNumber);
+  if (isNaN(day) || day < 1 || day > 58) {
+    return bot.sendMessage(msg.chat.id, '⚠️ 사용법: /generate_tts [1-58]');
+  }
+
+  await bot.sendMessage(msg.chat.id, `🔊 Day ${day} TTS 생성을 시작합니다...`);
+  
+  const { generateTTSForDay } = require('../services/content-generator');
+  generateTTSForDay(bot, day);
+}
+
+module.exports = { 
+  handleAdminCommand, 
+  handleBroadcast, 
+  handleGenerateCards, 
+  handleGenerateTTS, 
+  isAdmin, 
+  ADMIN_IDS 
+};

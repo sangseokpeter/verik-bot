@@ -9,7 +9,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -27,6 +27,8 @@ bot.onText(/\/help/, (msg) => handleCommand(bot, msg, 'help'));
 // 관리자 명령어
 bot.onText(/\/admin/, (msg) => handleAdminCommand(bot, msg));
 bot.onText(/\/broadcast (.+)/, (msg, match) => handleBroadcast(bot, msg, match[1]));
+bot.onText(/\/generate_cards (\d+)/, (msg, match) => handleGenerateCards(bot, msg, match[1]));
+bot.onText(/\/generate_tts (\d+)/, (msg, match) => handleGenerateTTS(bot, msg, match[1]));
 
 // ── 콜백 핸들러 (inline keyboard) ──
 bot.on('callback_query', async (query) => {
