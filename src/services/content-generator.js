@@ -8,7 +8,7 @@ async function generateWordImage(korean, meaningKhmer, category) {
   try {
     const response = await openai.images.generate({
       model: 'dall-e-3',
-      prompt: `Simple, cute, flat illustration of "${korean}" (${meaningKhmer}) for a Korean language learning flashcard. Clean white background, minimal style, colorful, child-friendly. No text in the image.`,
+      prompt: `Simple cute flat illustration of the concept: ${meaningKhmer}. Clean white background, minimal cartoon style, colorful, child-friendly. ABSOLUTELY NO TEXT, NO LETTERS, NO WORDS, NO CHARACTERS of any language anywhere in the image. Pure illustration only.`,
       n: 1,
       size: '1024x1024',
       quality: 'standard'
