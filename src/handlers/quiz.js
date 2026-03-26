@@ -17,11 +17,16 @@ async function startQuiz(bot, msg, quizType = 'daily') {
   const dayNumber = student.current_day;
   const isWeekly = quizType === 'weekly';
 
+  // 전체 단어 풀 가져오기 (오답 보기용)
+  const { data: allWords } = await supabase
+    .from('words')
+    .select('id, meaning_khmer')
+    .order('id');
+
   // 문제 생성
   let questions = [];
 
   if (isWeekly) {
-    // 주말 종합: 30문제 (이번 주 전체 단어)
     const weekStart = Math.max(1, dayNumber - 5);
     const { data: weekWords } = await supabase
       .from('words')
@@ -30,11 +35,8 @@ async function startQuiz(bot, msg, quizType = 'daily') {
       .lte('day_number', dayNumber)
       .order('id');
     
-    questions = generateQuestions(weekWords, 30);
+    questions = generateQuestions(weekWords, 30, allWords);
   } else {
-    // 평일: 15문제 (복습 5 + 오늘 10)
-    
-    // 1. 틀린 문제 복습 5문제
     const { data: wrongWords } = await supabase
       .from('wrong_word_tracker')
       .select('word_id, words(*)')
@@ -45,15 +47,14 @@ async function startQuiz(bot, msg, quizType = 'daily') {
 
     const reviewWords = wrongWords?.map(w => w.words).filter(Boolean) || [];
 
-    // 2. 오늘 단어 10문제
     const { data: todayWords } = await supabase
       .from('words')
       .select('*')
       .eq('day_number', dayNumber)
       .order('id');
 
-    const todayQ = generateQuestions(todayWords || [], 10);
-    const reviewQ = generateQuestions(reviewWords, 5);
+    const todayQ = generateQuestions(todayWords || [], 10, allWords);
+    const reviewQ = generateQuestions(reviewWords, 5, allWords);
     
     questions = [...reviewQ, ...todayQ];
   }
@@ -78,20 +79,26 @@ async function startQuiz(bot, msg, quizType = 'daily') {
   await sendQuizQuestion(bot, chatId, session.id, questions, 0);
 }
 
-// ── 문제 생성 (4지선다) ──
-function generateQuestions(words, count) {
+// ── 문제 생성 (4지선다) — allWords에서 오답 뽑기 ──
+function generateQuestions(words, count, allWords) {
   if (!words || words.length === 0) return [];
   
+  const pool = allWords && allWords.length > 3 ? allWords : words;
   const shuffled = [...words].sort(() => Math.random() - 0.5);
   const selected = shuffled.slice(0, Math.min(count, shuffled.length));
   
   return selected.map(word => {
-    // 오답 3개 생성 (같은 카테고리에서 랜덤)
-    const otherWords = words.filter(w => w.id !== word.id);
+    // 오답 3개를 전체 단어 풀에서 랜덤 뽑기
+    const otherWords = pool.filter(w => w.id !== word.id && w.meaning_khmer !== word.meaning_khmer);
     const wrongOptions = otherWords
       .sort(() => Math.random() - 0.5)
       .slice(0, 3)
       .map(w => w.meaning_khmer);
+
+    // 오답이 3개 미만이면 더미 추가
+    while (wrongOptions.length < 3) {
+      wrongOptions.push('—');
+    }
 
     // 정답 포함 4개 옵션 섞기
     const options = [word.meaning_khmer, ...wrongOptions]

@@ -43,36 +43,36 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// ── Cron 스케줄 (캄보디아 시간 UTC+7) ──
-// 아침 7시 = UTC 0시
+// ── Cron 스케줄 (캄보디아 UTC+7 → UTC로 변환) ──
+// 캄보디아 7AM = UTC 0:00
 cron.schedule('0 0 * * 1-6', () => {
-  console.log('📚 7AM: Sending morning content...');
+  console.log('📚 7AM Cambodia: Sending morning content...');
   sendMorningContent(bot);
-}, { timezone: 'Asia/Phnom_Penh' });
+});
 
-// 아침 8시 = UTC 1시
+// 캄보디아 8AM = UTC 1:00
 cron.schedule('0 1 * * 1-5', () => {
-  console.log('🎬 8AM: Sending video links...');
+  console.log('🎬 8AM Cambodia: Sending video links...');
   sendVideoLinks(bot);
-}, { timezone: 'Asia/Phnom_Penh' });
+});
 
-// 저녁 7시 = UTC 12시
+// 캄보디아 7PM = UTC 12:00
 cron.schedule('0 12 * * 1-6', () => {
-  console.log('📝 7PM: Sending evening quiz...');
+  console.log('📝 7PM Cambodia: Sending evening quiz...');
   sendEveningQuiz(bot);
-}, { timezone: 'Asia/Phnom_Penh' });
+});
 
-// 일요일 아침 7시 = 복습 카드
+// 일요일 캄보디아 7AM = UTC 토요일 0:00 (일요일 UTC 0:00)
 cron.schedule('0 0 * * 0', () => {
-  console.log('🔄 Sunday: Sending review cards...');
+  console.log('🔄 Sunday 7AM Cambodia: Sending review cards...');
   sendSundayReview(bot);
-}, { timezone: 'Asia/Phnom_Penh' });
+});
 
-// 매일 밤 9시 = 미참여 체크
+// 캄보디아 9PM = UTC 14:00
 cron.schedule('0 14 * * *', () => {
-  console.log('🔍 9PM: Checking inactive students...');
+  console.log('🔍 9PM Cambodia: Checking inactive students...');
   checkInactiveStudents(bot);
-}, { timezone: 'Asia/Phnom_Penh' });
+});
 
 // ── 에러 핸들링 ──
 bot.on('polling_error', (error) => {
