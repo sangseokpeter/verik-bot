@@ -1,10 +1,21 @@
 const OpenAI = require('openai');
 const { supabase } = require('../config/supabase');
-const puppeteer = require('puppeteer');
+const { createCanvas, registerFont, loadImage } = require('canvas');
+const path = require('path');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ── DALL-E 일러스트 생성 (글자 없이, 정사각형) ──
+// ── 폰트 등록 ──
+const fontDir = path.resolve(__dirname, '../../fonts');
+try {
+  registerFont(path.join(fontDir, 'NotoSansKR-Regular.ttf'), { family: 'NotoSansKR', weight: '400' });
+  registerFont(path.join(fontDir, 'NotoSansKR-Bold.ttf'), { family: 'NotoSansKR', weight: '700' });
+  console.log('✅ Korean fonts registered');
+} catch (err) {
+  console.error('Font registration error:', err.message);
+}
+
+// ── DALL-E 일러스트 생성 ──
 async function generateWordImage(korean, meaningKhmer, category) {
   try {
     const response = await openai.images.generate({
@@ -21,106 +32,194 @@ async function generateWordImage(korean, meaningKhmer, category) {
   }
 }
 
-// ── HTML 카드 템플릿 (VERI-K 네이비+골드 브랜드) ──
-function generateCardHTML(word, illustrationUrl, index, total, dayNumber) {
+// ── 둥근 모서리 사각형 그리기 ──
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ── 카드 이미지 그리기 (Canvas) ──
+async function drawCard(word, illustrationUrl, index, total, dayNumber) {
+  const W = 760;
+  const H = 980;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+
+  // ── 배경: 흰색 + 네이비 테두리 ──
+  ctx.fillStyle = '#FFFFFF';
+  roundRect(ctx, 0, 0, W, H, 32);
+  ctx.fill();
+
+  // 네이비 테두리
+  ctx.strokeStyle = '#1B2A4A';
+  ctx.lineWidth = 5;
+  roundRect(ctx, 2, 2, W - 4, H - 4, 32);
+  ctx.stroke();
+
+  // ── 골드 라인 (상단) ──
+  const goldGrad = ctx.createLinearGradient(0, 0, W, 0);
+  goldGrad.addColorStop(0, '#D4A843');
+  goldGrad.addColorStop(0.5, '#F0D68A');
+  goldGrad.addColorStop(1, '#D4A843');
+  ctx.fillStyle = goldGrad;
+  ctx.fillRect(5, 5, W - 10, 8);
+
+  // ── 헤더: 카드 번호 + DAY ──
+  // 카드 번호 (원형 배경)
+  ctx.fillStyle = '#1B2A4A';
+  ctx.beginPath();
+  ctx.arc(56, 52, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#D4A843';
+  ctx.beginPath();
+  ctx.moveTo(62, 52);
+  ctx.lineTo(50, 44);
+  ctx.lineTo(50, 60);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#1B2A4A';
+  ctx.font = '700 26px "NotoSansKR"';
+  ctx.fillText(`${index + 1} / ${total}`, 86, 60);
+
+  // DAY 배지
+  roundRect(ctx, W - 180, 32, 150, 42, 16);
+  ctx.fillStyle = '#1B2A4A';
+  ctx.fill();
+  ctx.fillStyle = '#D4A843';
+  ctx.font = '700 22px "NotoSansKR"';
+  ctx.textAlign = 'center';
+  ctx.fillText(`DAY ${dayNumber}`, W - 105, 60);
+  ctx.textAlign = 'left';
+
+  // ── 이미지 영역 ──
+  const imgX = 36;
+  const imgY = 88;
+  const imgW = W - 72;
+  const imgH = 380;
+
+  // 연초록 배경
+  roundRect(ctx, imgX, imgY, imgW, imgH, 24);
+  const greenGrad = ctx.createLinearGradient(imgX, imgY, imgX + imgW, imgY + imgH);
+  greenGrad.addColorStop(0, '#E8F5E9');
+  greenGrad.addColorStop(1, '#C8E6C9');
+  ctx.fillStyle = greenGrad;
+  ctx.fill();
+
+  // DALL-E 일러스트 로드
+  if (illustrationUrl) {
+    try {
+      const img = await loadImage(illustrationUrl);
+      const size = 320;
+      const ix = imgX + (imgW - size) / 2;
+      const iy = imgY + (imgH - size) / 2;
+      ctx.drawImage(img, ix, iy, size, size);
+    } catch (err) {
+      console.error('Image load error:', err.message);
+    }
+  }
+
+  // 스피커 아이콘 (원형)
+  ctx.fillStyle = 'rgba(27, 42, 74, 0.8)';
+  ctx.beginPath();
+  ctx.arc(imgX + imgW - 40, imgY + 40, 30, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#D4A843';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(imgX + imgW - 48, imgY + 36);
+  ctx.lineTo(imgX + imgW - 48, imgY + 44);
+  ctx.lineTo(imgX + imgW - 42, imgY + 44);
+  ctx.lineTo(imgX + imgW - 36, imgY + 48);
+  ctx.lineTo(imgX + imgW - 36, imgY + 32);
+  ctx.lineTo(imgX + imgW - 42, imgY + 36);
+  ctx.closePath();
+  ctx.stroke();
+
+  // ── 한국어 단어 ──
+  const textY = imgY + imgH + 50;
+  ctx.fillStyle = '#1B2A4A';
+  ctx.font = '700 64px "NotoSansKR"';
+  ctx.fillText(word.korean, 48, textY);
+
+  // 발음
+  const korWidth = ctx.measureText(word.korean).width;
   const pron = word.pronunciation ? word.pronunciation.replace('[', '').replace(']', '') : word.korean;
-  const exampleKr = word.example_kr
-    ? word.example_kr.replace(word.korean, `<span style="color:#1B2A4A;background:#E8EDF4;padding:2px 12px;border-radius:8px;">${word.korean}</span>`)
-    : '';
+  ctx.fillStyle = '#B0B0B0';
+  ctx.font = '400 26px "NotoSansKR"';
+  ctx.fillText(`[${pron}]`, 48 + korWidth + 16, textY);
 
-  const fontDir = require('path').resolve(__dirname, '../../fonts');
-  
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-@font-face {
-  font-family: 'NotoSansKR';
-  src: url('file://${fontDir}/NotoSansKR-Regular.woff2') format('woff2');
-  font-weight: 400;
-}
-@font-face {
-  font-family: 'NotoSansKR';
-  src: url('file://${fontDir}/NotoSansKR-Bold.woff2') format('woff2');
-  font-weight: 700;
-}
-*{margin:0;padding:0;box-sizing:border-box}
-body{width:760px;background:transparent;font-family:'NotoSansKR',sans-serif}
-</style>
-</head>
-<body>
-<div style="width:760px;border-radius:40px;overflow:hidden;background:#fff;border:5px solid #1B2A4A">
-  <div style="height:8px;background:linear-gradient(90deg,#D4A843 0%,#F0D68A 50%,#D4A843 100%)"></div>
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:28px 40px 0">
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="width:56px;height:56px;background:#1B2A4A;border-radius:50%;display:flex;align-items:center;justify-content:center">
-        <svg width="20" height="20" viewBox="0 0 10 10"><path d="M7 5L3 2v6z" fill="#D4A843"/></svg>
-      </div>
-      <span style="font-size:30px;font-weight:800;color:#1B2A4A">${index + 1} / ${total}</span>
-    </div>
-    <div style="background:#1B2A4A;color:#D4A843;font-size:26px;font-weight:800;padding:10px 32px;border-radius:20px;letter-spacing:1px">DAY ${dayNumber}</div>
-  </div>
-  <div style="margin:28px 40px 0;position:relative">
-    <div style="background:linear-gradient(160deg,#E8F5E9 0%,#C8E6C9 100%);border-radius:32px;height:440px;display:flex;align-items:center;justify-content:center;overflow:hidden">
-      ${illustrationUrl ? `<img src="${illustrationUrl}" style="width:380px;height:380px;object-fit:contain">` : `<div style="width:380px;height:380px;background:#E0E0E0;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:100px;color:#999">?</div>`}
-    </div>
-    <div style="position:absolute;top:24px;right:24px;width:84px;height:84px;background:rgba(27,42,74,0.8);border-radius:50%;display:flex;align-items:center;justify-content:center">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#D4A843" stroke-width="2.2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-    </div>
-  </div>
-  <div style="padding:36px 48px 12px">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div style="display:flex;align-items:baseline;gap:20px">
-        <span style="font-size:72px;font-weight:700;color:#1B2A4A;font-family:'NotoSansKR',sans-serif">${word.korean}</span>
-        <span style="font-size:30px;font-weight:400;color:#B0B0B0;font-family:'NotoSansKR',sans-serif">[${pron}]</span>
-      </div>
-      <div style="background:#EEF2F7;color:#1B2A4A;font-size:22px;font-weight:700;padding:8px 24px;border-radius:16px;font-family:'NotoSansKR',sans-serif">${word.category}</div>
-    </div>
-  </div>
-  <div style="padding:0 48px 16px">
-    <div style="background:#F0F7ED;border:3px solid #4CAF50;border-radius:20px;padding:16px 28px;text-align:center">
-      <span style="font-size:36px;font-weight:700;color:#2E7D32">${word.meaning_khmer}</span>
-    </div>
-  </div>
-  <div style="padding:0 48px 40px">
-    <p style="font-size:22px;font-weight:700;color:#C0C0C0;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px">EXAMPLE</p>
-    <div style="background:#F9F9F9;border-radius:24px;padding:28px 32px">
-      <p style="font-size:30px;font-weight:700;color:#555;margin-bottom:8px;font-family:'NotoSansKR',sans-serif">${exampleKr}</p>
-      <p style="font-size:20px;font-weight:400;color:#AAA">${word.example_khmer || ''}</p>
-    </div>
-  </div>
-  <div style="height:8px;background:linear-gradient(90deg,#D4A843 0%,#F0D68A 50%,#D4A843 100%)"></div>
-</div>
-</body>
-</html>`;
-}
+  // 카테고리 배지
+  ctx.font = '700 20px "NotoSansKR"';
+  const catWidth = ctx.measureText(word.category).width;
+  const catX = W - 48 - catWidth - 32;
+  roundRect(ctx, catX, textY - 28, catWidth + 32, 36, 12);
+  ctx.fillStyle = '#EEF2F7';
+  ctx.fill();
+  ctx.fillStyle = '#1B2A4A';
+  ctx.fillText(word.category, catX + 16, textY - 2);
 
-// ── HTML → PNG 변환 ──
-async function htmlToPng(html) {
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none', '--disable-gpu', '--allow-file-access-from-files']
-  });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 780, height: 1200 });
-  await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
-  
-  // 폰트 로딩 대기
-  await page.evaluate(() => document.fonts.ready);
-  await new Promise(r => setTimeout(r, 2000));
-  
-  const element = await page.$('body > div');
-  const imageBuffer = await element.screenshot({ type: 'png', omitBackground: true });
-  await browser.close();
-  return imageBuffer;
+  // ── 크메르어 뜻 (초록 상자) ──
+  const khmerY = textY + 30;
+  roundRect(ctx, 48, khmerY, W - 96, 60, 16);
+  ctx.fillStyle = '#F0F7ED';
+  ctx.fill();
+  ctx.strokeStyle = '#4CAF50';
+  ctx.lineWidth = 3;
+  roundRect(ctx, 48, khmerY, W - 96, 60, 16);
+  ctx.stroke();
+
+  ctx.fillStyle = '#2E7D32';
+  ctx.font = '700 32px "NotoSansKR"';
+  ctx.textAlign = 'center';
+  ctx.fillText(word.meaning_khmer, W / 2, khmerY + 42);
+  ctx.textAlign = 'left';
+
+  // ── EXAMPLE ──
+  const exY = khmerY + 80;
+  ctx.fillStyle = '#C0C0C0';
+  ctx.font = '700 18px "NotoSansKR"';
+  ctx.fillText('EXAMPLE', 48, exY);
+
+  // 예문 배경
+  roundRect(ctx, 48, exY + 12, W - 96, 80, 16);
+  ctx.fillStyle = '#F9F9F9';
+  ctx.fill();
+
+  // 한국어 예문
+  if (word.example_kr) {
+    ctx.fillStyle = '#555555';
+    ctx.font = '700 24px "NotoSansKR"';
+    ctx.fillText(word.example_kr, 68, exY + 42);
+  }
+
+  // 크메르어 예문
+  if (word.example_khmer) {
+    ctx.fillStyle = '#AAAAAA';
+    ctx.font = '400 18px "NotoSansKR"';
+    ctx.fillText(word.example_khmer, 68, exY + 72);
+  }
+
+  // ── 골드 라인 (하단) ──
+  ctx.fillStyle = goldGrad;
+  ctx.fillRect(5, H - 13, W - 10, 8);
+
+  return canvas.toBuffer('image/png');
 }
 
 // ── 단어카드 이미지 생성 ──
 async function generateCardImage(word, index, total, dayNumber) {
   const illustrationUrl = await generateWordImage(word.korean, word.meaning_khmer, word.category);
-  const html = generateCardHTML(word, illustrationUrl, index, total, dayNumber);
-  const imageBuffer = await htmlToPng(html);
+  const imageBuffer = await drawCard(word, illustrationUrl, index, total, dayNumber);
 
   const fileName = `cards/day${dayNumber}/${word.id}_card.png`;
   const { error: uploadError } = await supabase.storage
@@ -140,11 +239,8 @@ async function generateCardImage(word, index, total, dayNumber) {
 // ── 하루치 카드 일괄 생성 ──
 async function generateCardsForDay(bot, dayNumber) {
   const { data: words } = await supabase
-    .from('words')
-    .select('*')
-    .eq('day_number', dayNumber)
-    .is('image_url', null)
-    .order('sort_order');
+    .from('words').select('*').eq('day_number', dayNumber)
+    .is('image_url', null).order('sort_order');
 
   if (!words || words.length === 0) {
     console.log(`Day ${dayNumber}: No cards to generate`);
@@ -171,7 +267,7 @@ async function generateCardsForDay(bot, dayNumber) {
           await bot.sendMessage(adminId, `🎨 진행: ${i + 1}/${words.length} (${words[i].korean})`);
         }
       } else { failed++; }
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
       console.error(`Card failed for ${words[i].korean}:`, err.message);
       failed++;
