@@ -69,15 +69,15 @@ body{width:760px;background:transparent;font-family:'Nunito',sans-serif}
     </div>
   </div>
   <div style="padding:0 48px 16px">
-    <div style="background:#F0F7ED;border:5px solid #4CAF50;border-radius:28px;padding:28px 36px;text-align:center">
-      <span style="font-size:56px;font-weight:700;color:#2E7D32;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.meaning_khmer}</span>
+    <div style="background:#F0F7ED;border:3px solid #4CAF50;border-radius:20px;padding:16px 28px;text-align:center">
+      <span style="font-size:36px;font-weight:700;color:#2E7D32;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.meaning_khmer}</span>
     </div>
   </div>
   <div style="padding:0 48px 40px">
     <p style="font-size:22px;font-weight:800;color:#C0C0C0;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px">EXAMPLE</p>
     <div style="background:#F9F9F9;border-radius:24px;padding:28px 32px">
       <p style="font-size:30px;font-weight:700;color:#555;margin-bottom:8px">${exampleKr}</p>
-      <p style="font-size:28px;font-weight:600;color:#AAA;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.example_khmer || ''}</p>
+      <p style="font-size:20px;font-weight:600;color:#AAA;font-family:'Noto Sans Khmer','Nunito',sans-serif">${word.example_khmer || ''}</p>
     </div>
   </div>
   <div style="height:8px;background:linear-gradient(90deg,#D4A843 0%,#F0D68A 50%,#D4A843 100%)"></div>
@@ -168,7 +168,6 @@ async function generateCardsForDay(bot, dayNumber) {
     const { data: firstCard } = await supabase.from('words').select('*').eq('day_number', dayNumber).not('image_url', 'is', null).order('sort_order').limit(1).single();
     if (firstCard?.image_url) {
       await bot.sendPhoto(adminId, firstCard.image_url, {
-        caption: `📚 ${firstCard.korean} ${firstCard.pronunciation}\n🇰🇭 ${firstCard.meaning_khmer}\n\nOK?`,
         reply_markup: { inline_keyboard: [[{ text: '✅ OK', callback_data: `admin_cards_ok_${dayNumber}` }, { text: '🔄 다시', callback_data: `admin_cards_redo_${dayNumber}` }]] }
       });
     }
