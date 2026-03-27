@@ -121,11 +121,15 @@ def generate_card(word, illustration_path, output_path, fonts):
 
     # ── DAY 배지 (오른쪽) ──
     day_badge_x = W - 180
+    day_badge_w = 120
     draw.rounded_rectangle((day_badge_x, progress_y, W-60, progress_y+bar_h), 15, fill='#C62828')
     day_text = f"Day {day}"
-    bb = draw.textbbox((0,0), day_text, font=fonts['kr_b20'])
-    day_w = bb[2] - bb[0]
-    draw.text((day_badge_x + (120-day_w)//2, progress_y + 5), day_text, font=fonts['kr_b20'], fill='white')
+    bb_day = draw.textbbox((0,0), day_text, font=fonts['kr_b20'])
+    day_text_w = bb_day[2] - bb_day[0]
+    day_text_h = bb_day[3] - bb_day[1]
+    day_x = day_badge_x + (day_badge_w - day_text_w) // 2
+    day_y = progress_y + (bar_h - day_text_h) // 2 - 2
+    draw.text((day_x, day_y), day_text, font=fonts['kr_b20'], fill='white')
 
     # ── 일러스트 영역 ──
     img_y = 110
@@ -144,10 +148,11 @@ def generate_card(word, illustration_path, output_path, fonts):
         except Exception as e:
             print(f"Illustration error: {e}", file=sys.stderr)
 
-    # ── 스피커 아이콘 (오른쪽 상단) ──
-    speaker_x = W - 120
+    # ── 스피커 아이콘 (이미지 영역 안, 오른쪽 상단) ──
+    speaker_size = 70
+    speaker_x = W - 40 - speaker_size - 20  # 이미지 테두리 안쪽
     speaker_y = img_y + 20
-    draw.ellipse((speaker_x, speaker_y, speaker_x+70, speaker_y+70), fill='#5DADE2')
+    draw.ellipse((speaker_x, speaker_y, speaker_x+speaker_size, speaker_y+speaker_size), fill='#5DADE2')
     # 스피커 이모지
     draw.text((speaker_x+18, speaker_y+18), "🔊", font=fonts['kr_b28'], fill='white')
 
@@ -193,10 +198,12 @@ def generate_card(word, illustration_path, output_path, fonts):
             word_bb = draw.textbbox((0,0), korean, font=fonts['kr_b24'])
             word_w = word_bb[2] - word_bb[0]
             
-            # 노란색 하이라이트
+            # 노란색 하이라이트 (박스 안쪽에만)
             highlight_x = 90 + before_w
+            highlight_x1 = max(highlight_x - 4, 65)  # 왼쪽 경계
+            highlight_x2 = min(highlight_x + word_w + 4, W - 65)  # 오른쪽 경계
             draw.rounded_rectangle(
-                (highlight_x-4, ex_box_y+22, highlight_x+word_w+4, ex_box_y+58),
+                (highlight_x1, ex_box_y+22, highlight_x2, ex_box_y+58),
                 6, fill='#FFEB3B'
             )
         
@@ -216,10 +223,12 @@ def generate_card(word, illustration_path, output_path, fonts):
             word_bb = draw.textbbox((0,0), meaning_khmer, font=fonts['km_r22'])
             word_w = word_bb[2] - word_bb[0]
             
-            # 노란색 하이라이트
+            # 노란색 하이라이트 (박스 안쪽에만)
             highlight_x = 90 + before_w
+            highlight_x1 = max(highlight_x - 4, 65)  # 왼쪽 경계
+            highlight_x2 = min(highlight_x + word_w + 4, W - 65)  # 오른쪽 경계
             draw.rounded_rectangle(
-                (highlight_x-4, ex_box_y+82, highlight_x+word_w+4, ex_box_y+118),
+                (highlight_x1, ex_box_y+82, highlight_x2, ex_box_y+118),
                 6, fill='#FFEB3B'
             )
         
