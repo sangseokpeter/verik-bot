@@ -181,9 +181,15 @@ def generate_card(word, illustration_path, output_path, fonts):
     ex_y = word_y + 180
     draw.text((60, ex_y), "Example", font=fonts['kr_b32'], fill='#1A1A1A')
 
-    # 예문 박스
+    # 예문 박스 (흰색 배경 먼저, 테두리 나중에)
     ex_box_y = ex_y + 60
-    draw.rounded_rectangle((60, ex_box_y, W-60, ex_box_y+180), 16, fill='white', outline='#5DADE2', width=3)
+    ex_box_padding = 8  # 테두리 안쪽 여유
+    
+    # 1. 흰색 배경
+    draw.rounded_rectangle((60+ex_box_padding, ex_box_y+ex_box_padding, W-60-ex_box_padding, ex_box_y+180-ex_box_padding), 16, fill='white')
+    
+    # 2. 파란 테두리 (마지막에 그려서 덮어쓰기 방지)
+    draw.rounded_rectangle((60, ex_box_y, W-60, ex_box_y+180), 16, outline='#5DADE2', width=3)
 
     # 한국어 예문
     if example_kr:
