@@ -164,7 +164,8 @@ def generate_card(word, illustration_path, output_path, fonts):
     draw.text((60, word_y + 90), pron, font=fonts['kr_r24'], fill='#888888')
 
     # ── 크메르어 버튼 (오른쪽) ──
-    khmer_btn_x = W - 240
+    khmer_btn_w = 270  # 180 → 270 (1.5배)
+    khmer_btn_x = W - 60 - khmer_btn_w  # 오른쪽 끝(W-60)에서 왼쪽으로 확장
     khmer_btn_y = word_y + 20
     khmer_btn_h = 70
     draw.rounded_rectangle((khmer_btn_x, khmer_btn_y, W-60, khmer_btn_y+khmer_btn_h), 12, fill='#C62828')
@@ -173,7 +174,7 @@ def generate_card(word, illustration_path, output_path, fonts):
     bb_km = draw.textbbox((0,0), meaning_khmer, font=fonts['km_b42'])
     km_w = bb_km[2] - bb_km[0]
     km_h = bb_km[3] - bb_km[1]
-    km_x = khmer_btn_x + (180 - km_w) // 2
+    km_x = khmer_btn_x + (khmer_btn_w - km_w) // 2
     km_y = khmer_btn_y + (khmer_btn_h - km_h) // 2 - 5  # 약간 위로 조정
     draw.text((km_x, km_y), meaning_khmer, font=fonts['km_b42'], fill='white')
 
