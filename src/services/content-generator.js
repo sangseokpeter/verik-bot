@@ -101,7 +101,9 @@ async function generateCardImage(word, index, total, dayNumber) {
   }
 
   const { data: urlData } = supabase.storage.from('word-cards').getPublicUrl(fileName);
-  await supabase.from('words').update({ image_url: urlData.publicUrl }).eq('id', word.id);
+  // Telegram 캐시 방지: timestamp 추가
+  const urlWithTimestamp = `${urlData.publicUrl}?t=${Date.now()}`;
+  await supabase.from('words').update({ image_url: urlWithTimestamp }).eq('id', word.id);
 
   // 임시 파일 정리
   try {
@@ -109,7 +111,7 @@ async function generateCardImage(word, index, total, dayNumber) {
     fs.unlinkSync(outputPath);
   } catch (e) {}
 
-  return urlData.publicUrl;
+  return urlWithTimestamp;
 }
 
 // ── 하루치 카드 일괄 생성 ──
