@@ -200,8 +200,8 @@ def generate_card(word, illustration_path, output_path, fonts):
             
             # 노란색 하이라이트 (박스 안쪽에만)
             highlight_x = 90 + before_w
-            highlight_x1 = max(highlight_x - 4, 65)  # 왼쪽 경계
-            highlight_x2 = min(highlight_x + word_w + 4, W - 65)  # 오른쪽 경계
+            highlight_x1 = max(highlight_x - 4, 70)  # 왼쪽 경계 (65→70)
+            highlight_x2 = min(highlight_x + word_w + 4, W - 70)  # 오른쪽 경계 (65→70)
             draw.rounded_rectangle(
                 (highlight_x1, ex_box_y+22, highlight_x2, ex_box_y+58),
                 6, fill='#FFEB3B'
@@ -225,8 +225,8 @@ def generate_card(word, illustration_path, output_path, fonts):
             
             # 노란색 하이라이트 (박스 안쪽에만)
             highlight_x = 90 + before_w
-            highlight_x1 = max(highlight_x - 4, 65)  # 왼쪽 경계
-            highlight_x2 = min(highlight_x + word_w + 4, W - 65)  # 오른쪽 경계
+            highlight_x1 = max(highlight_x - 4, 70)  # 왼쪽 경계
+            highlight_x2 = min(highlight_x + word_w + 4, W - 70)  # 오른쪽 경계
             draw.rounded_rectangle(
                 (highlight_x1, ex_box_y+82, highlight_x2, ex_box_y+118),
                 6, fill='#FFEB3B'
@@ -238,8 +238,17 @@ def generate_card(word, illustration_path, output_path, fonts):
     # ── READ 버튼 ──
     read_btn_x = W - 220
     read_btn_y = ex_box_y + 60
-    draw.rounded_rectangle((read_btn_x, read_btn_y, W-100, read_btn_y+55), 12, fill='#C62828')
-    draw.text((read_btn_x+35, read_btn_y+12), "READ", font=fonts['kr_b28'], fill='white')
+    read_btn_w = 120
+    read_btn_h = 55
+    draw.rounded_rectangle((read_btn_x, read_btn_y, read_btn_x+read_btn_w, read_btn_y+read_btn_h), 12, fill='#C62828')
+    
+    # READ 텍스트 중앙 정렬
+    read_bb = draw.textbbox((0,0), "READ", font=fonts['kr_b28'])
+    read_w = read_bb[2] - read_bb[0]
+    read_h = read_bb[3] - read_bb[1]
+    read_x = read_btn_x + (read_btn_w - read_w) // 2
+    read_y = read_btn_y + (read_btn_h - read_h) // 2 - 2
+    draw.text((read_x, read_y), "READ", font=fonts['kr_b28'], fill='white')
 
     # ── 저장 ──
     img.save(output_path, 'PNG')
