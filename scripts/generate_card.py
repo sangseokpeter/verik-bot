@@ -173,36 +173,50 @@ def generate_card(word, illustration_path, output_path, fonts):
     ex_box_y = ex_y + 60
     draw.rounded_rectangle((60, ex_box_y, W-60, ex_box_y+180), 16, fill='white', outline='#5DADE2', width=3)
 
-    # 한국어 예문 (노란색 하이라이트)
+    # 한국어 예문
     if example_kr:
-        # 노란색 배경
-        kr_bb = draw.textbbox((0,0), korean, font=fonts['kr_b24'])
-        kr_word_w = kr_bb[2] - kr_bb[0]
-        
-        # 예문에서 단어 위치 찾기
+        # 먼저 하이라이트 그리기
         if korean in example_kr:
-            before = example_kr.split(korean)[0]
-            before_bb = draw.textbbox((0,0), before, font=fonts['kr_b24'])
+            # 단어 앞부분 너비 계산
+            before_text = example_kr[:example_kr.find(korean)]
+            before_bb = draw.textbbox((0,0), before_text, font=fonts['kr_b24'])
             before_w = before_bb[2] - before_bb[0]
+            
+            # 단어 너비 계산
+            word_bb = draw.textbbox((0,0), korean, font=fonts['kr_b24'])
+            word_w = word_bb[2] - word_bb[0]
             
             # 노란색 하이라이트
-            draw.rectangle((90+before_w, ex_box_y+25, 90+before_w+kr_word_w, ex_box_y+55), fill='#FFEB3B')
+            highlight_x = 90 + before_w
+            draw.rounded_rectangle(
+                (highlight_x-4, ex_box_y+22, highlight_x+word_w+4, ex_box_y+58),
+                6, fill='#FFEB3B'
+            )
         
+        # 텍스트 그리기
         draw.text((90, ex_box_y+25), example_kr, font=fonts['kr_b24'], fill='#1A1A1A')
 
-    # 크메르어 예문 (노란색 하이라이트)
+    # 크메르어 예문
     if example_khmer:
-        # 크메르어 단어 찾기 및 하이라이트
+        # 먼저 하이라이트 그리기
         if meaning_khmer in example_khmer:
-            before = example_khmer.split(meaning_khmer)[0]
-            before_bb = draw.textbbox((0,0), before, font=fonts['km_r22'])
+            # 단어 앞부분 너비 계산
+            before_text = example_khmer[:example_khmer.find(meaning_khmer)]
+            before_bb = draw.textbbox((0,0), before_text, font=fonts['km_r22'])
             before_w = before_bb[2] - before_bb[0]
             
-            km_word_bb = draw.textbbox((0,0), meaning_khmer, font=fonts['km_r22'])
-            km_word_w = km_word_bb[2] - km_word_bb[0]
+            # 단어 너비 계산
+            word_bb = draw.textbbox((0,0), meaning_khmer, font=fonts['km_r22'])
+            word_w = word_bb[2] - word_bb[0]
             
-            draw.rectangle((90+before_w, ex_box_y+85, 90+before_w+km_word_w, ex_box_y+115), fill='#FFEB3B')
+            # 노란색 하이라이트
+            highlight_x = 90 + before_w
+            draw.rounded_rectangle(
+                (highlight_x-4, ex_box_y+82, highlight_x+word_w+4, ex_box_y+118),
+                6, fill='#FFEB3B'
+            )
         
+        # 텍스트 그리기
         draw.text((90, ex_box_y+85), example_khmer, font=fonts['km_r22'], fill='#555555')
 
     # ── READ 버튼 ──
