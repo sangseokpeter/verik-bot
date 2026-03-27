@@ -6,14 +6,39 @@ const fs = require('fs');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ── 폰트 등록 ──
-const fontDir = path.resolve(__dirname, '../../fonts');
-try {
-  GlobalFonts.registerFromPath(path.join(fontDir, 'NotoSansKR-Regular.ttf'), 'NotoSansKR');
-  GlobalFonts.registerFromPath(path.join(fontDir, 'NotoSansKR-Bold.ttf'), 'NotoSansKRBold');
-  console.log('✅ Korean fonts registered');
-} catch (err) {
-  console.error('Font registration error:', err.message);
+// ── 폰트 등록 (여러 경로 시도) ──
+const possibleFontDirs = [
+  path.resolve(__dirname, '../../fonts'),
+  path.resolve(process.cwd(), 'fonts'),
+  '/app/fonts',
+  path.resolve(__dirname, '../../../fonts')
+];
+
+let fontsLoaded = false;
+for (const fontDir of possibleFontDirs) {
+  const regularPath = path.join(fontDir, 'NotoSansKR-Regular.ttf');
+  const boldPath = path.join(fontDir, 'NotoSansKR-Bold.ttf');
+  
+  console.log(`🔍 Trying font dir: ${fontDir}`);
+  console.log(`   Regular exists: ${fs.existsSync(regularPath)}`);
+  console.log(`   Bold exists: ${fs.existsSync(boldPath)}`);
+  
+  if (fs.existsSync(regularPath) && fs.existsSync(boldPath)) {
+    try {
+      GlobalFonts.registerFromPath(regularPath, 'NotoSansKR');
+      GlobalFonts.registerFromPath(boldPath, 'NotoSansKRBold');
+      console.log(`✅ Korean fonts registered from: ${fontDir}`);
+      fontsLoaded = true;
+      break;
+    } catch (err) {
+      console.error(`Font registration error at ${fontDir}:`, err.message);
+    }
+  }
+}
+
+if (!fontsLoaded) {
+  console.error('❌ Korean fonts NOT found in any path!');
+  console.log('Available fonts:', GlobalFonts.families);
 }
 
 // ── DALL-E 일러스트 생성 ──
@@ -89,7 +114,7 @@ async function drawCard(word, illustrationUrl, index, total, dayNumber) {
   ctx.fill();
 
   ctx.fillStyle = '#1B2A4A';
-  ctx.font = '26px "NotoSansKRBold"';
+  ctx.font = '26px NotoSansKRBold';
   ctx.fillText(`${index + 1} / ${total}`, 86, 60);
 
   // DAY 배지
@@ -97,7 +122,7 @@ async function drawCard(word, illustrationUrl, index, total, dayNumber) {
   ctx.fillStyle = '#1B2A4A';
   ctx.fill();
   ctx.fillStyle = '#D4A843';
-  ctx.font = '22px "NotoSansKRBold"';
+  ctx.font = '22px NotoSansKRBold';
   ctx.textAlign = 'center';
   ctx.fillText(`DAY ${dayNumber}`, W - 105, 60);
   ctx.textAlign = 'left';
@@ -151,18 +176,18 @@ async function drawCard(word, illustrationUrl, index, total, dayNumber) {
   // ── 한국어 단어 ──
   const textY = imgY + imgH + 50;
   ctx.fillStyle = '#1B2A4A';
-  ctx.font = '64px "NotoSansKRBold"';
+  ctx.font = '64px NotoSansKRBold';
   ctx.fillText(word.korean, 48, textY);
 
   // 발음
   const korWidth = ctx.measureText(word.korean).width;
   const pron = word.pronunciation ? word.pronunciation.replace('[', '').replace(']', '') : word.korean;
   ctx.fillStyle = '#B0B0B0';
-  ctx.font = '26px "NotoSansKR"';
+  ctx.font = '26px NotoSansKR';
   ctx.fillText(`[${pron}]`, 48 + korWidth + 16, textY);
 
   // 카테고리 배지
-  ctx.font = '20px "NotoSansKRBold"';
+  ctx.font = '20px NotoSansKRBold';
   const catWidth = ctx.measureText(word.category).width;
   const catX = W - 48 - catWidth - 32;
   roundRect(ctx, catX, textY - 28, catWidth + 32, 36, 12);
@@ -182,7 +207,7 @@ async function drawCard(word, illustrationUrl, index, total, dayNumber) {
   ctx.stroke();
 
   ctx.fillStyle = '#2E7D32';
-  ctx.font = '32px "NotoSansKRBold"';
+  ctx.font = '32px NotoSansKRBold';
   ctx.textAlign = 'center';
   ctx.fillText(word.meaning_khmer, W / 2, khmerY + 42);
   ctx.textAlign = 'left';
@@ -190,7 +215,7 @@ async function drawCard(word, illustrationUrl, index, total, dayNumber) {
   // ── EXAMPLE ──
   const exY = khmerY + 80;
   ctx.fillStyle = '#C0C0C0';
-  ctx.font = '18px "NotoSansKRBold"';
+  ctx.font = '18px NotoSansKRBold';
   ctx.fillText('EXAMPLE', 48, exY);
 
   // 예문 배경
@@ -201,14 +226,14 @@ async function drawCard(word, illustrationUrl, index, total, dayNumber) {
   // 한국어 예문
   if (word.example_kr) {
     ctx.fillStyle = '#555555';
-    ctx.font = '24px "NotoSansKRBold"';
+    ctx.font = '24px NotoSansKRBold';
     ctx.fillText(word.example_kr, 68, exY + 42);
   }
 
   // 크메르어 예문
   if (word.example_khmer) {
     ctx.fillStyle = '#AAAAAA';
-    ctx.font = '18px "NotoSansKR"';
+    ctx.font = '18px NotoSansKR';
     ctx.fillText(word.example_khmer, 68, exY + 72);
   }
 
