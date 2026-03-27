@@ -1,158 +1,121 @@
+// ============================================
+// Word Card Navigation Handler
+// ============================================
 const { supabase } = require('../config/supabase');
 
-// ── 단어카드 전송 (한 장씩) ──
-async function sendWordCards(bot, chatId, dayNumber) {
-  const { data: words } = await supabase
-    .from('words')
-    .select('*')
-    .eq('day_number', dayNumber)
-    .order('sort_order');
-
-  if (!words || words.length === 0) return;
-
-  // 첫 번째 카드 전송
-  await sendSingleCard(bot, chatId, words[0], 0, words.length);
-}
-
-// ── 단일 카드 전송 ──
-async function sendSingleCard(bot, chatId, word, index, total) {
-  const cardText =
-    `📚 단어 ${index + 1}/${total}\n\n` +
-    `🇰🇷 ${word.korean}\n` +
-    `🔊 ${word.pronunciation}\n\n` +
-    `📂 ${word.category} | ${word.topic}\n\n` +
-    `💡 크메르어 뜻을 맞혀보세요!\n` +
-    `   សាកទាយអត្ថន័យជាភាសាខ្មែរ!`;
-
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: '👁 뜻 보기 / មើលអត្ថន័យ', callback_data: `card_reveal_${word.id}_${index}_${total}` }
-      ],
-      [
-        { text: '🔊 발음 듣기', callback_data: `card_audio_${word.id}` }
-      ],
-      ...(index < total - 1 ? [[
-        { text: `➡️ 다음 단어 (${index + 2}/${total})`, callback_data: `card_next_${word.day_number}_${index + 1}` }
-      ]] : [[
-        { text: '✅ 오늘 단어 완료!', callback_data: `card_done_${word.day_number}` }
-      ]])
-    ]
-  };
-
-  if (word.image_url) {
-    await bot.sendPhoto(chatId, word.image_url, {
-      caption: cardText,
-      reply_markup: keyboard
-    });
-  } else {
-    await bot.sendMessage(chatId, cardText, { reply_markup: keyboard });
-  }
-}
-
-// ── 콜백 처리 ──
-async function handleWordCardCallback(bot, query) {
-  const chatId = query.message.chat.id;
-  const msgId = query.message.message_id;
-  const data = query.data;
-
+/**
+ * 단어 카드 전송 (Next/이전 버튼 포함)
+ */
+async function sendWordCard(bot, chatId, day, index) {
   try {
-    // 뜻 공개
-    if (data.startsWith('card_reveal_')) {
-      const parts = data.split('_');
-      const wordId = parseInt(parts[2]);
-      const index = parseInt(parts[3]);
-      const total = parseInt(parts[4]);
+    // DB에서 해당 Day의 단어 목록 가져오기
+    const { data: words, error } = await supabase
+      .from('words')
+      .select('*')
+      .eq('day_number', day)
+      .order('id');
 
-      const { data: word } = await supabase
-        .from('words')
-        .select('*')
-        .eq('id', wordId)
-        .single();
+    if (error || !words || words.length === 0) {
+      await bot.sendMessage(chatId, `❌ Day ${day} 단어를 찾을 수 없습니다.`);
+      return;
+    }
 
-      if (!word) return;
+    const total = words.length;
+    
+    // 인덱스 범위 체크
+    if (index < 0 || index >= total) {
+      await bot.sendMessage(chatId, '카드 범위를 벗어났습니다.');
+      return;
+    }
 
-      const revealText =
-        `📚 단어 ${index + 1}/${total}\n\n` +
-        `🇰🇷 ${word.korean}\n` +
-        `🔊 ${word.pronunciation}\n\n` +
-        `🇰🇭 ${word.meaning_khmer}\n\n` +
-        `📝 예문:\n` +
-        `  ${word.example_kr}\n` +
-        `  ${word.example_khmer}`;
+    const word = words[index];
 
-      const keyboard = {
-        inline_keyboard: [
-          [
-            { text: '🔊 발음 듣기', callback_data: `card_audio_${word.id}` }
-          ],
-          ...(index < total - 1 ? [[
-            { text: `➡️ 다음 단어 (${index + 2}/${total})`, callback_data: `card_next_${word.day_number}_${index + 1}` }
-          ]] : [[
-            { text: '✅ 오늘 단어 완료!', callback_data: `card_done_${word.day_number}` }
-          ]])
-        ]
-      };
+    // 카드 이미지 URL 체크
+    if (!word.image_url) {
+      await bot.sendMessage(chatId, `❌ 카드 이미지가 없습니다: ${word.korean}`);
+      return;
+    }
 
-      await bot.editMessageText(revealText, {
-        chat_id: chatId,
-        message_id: msgId,
-        reply_markup: keyboard
+    // 캡션
+    const caption = `${word.korean} (${index + 1}/${total})`;
+
+    // Inline Keyboard 버튼
+    const keyboard = [];
+    const buttons = [];
+
+    // 이전 버튼 (첫 카드가 아닐 때만)
+    if (index > 0) {
+      buttons.push({
+        text: '◀ 이전',
+        callback_data: `card_prev_${day}_${index}`
       });
     }
 
-    // 다음 카드
-    else if (data.startsWith('card_next_')) {
+    // 다음 버튼 (마지막 카드가 아닐 때만)
+    if (index < total - 1) {
+      buttons.push({
+        text: '다음 ▶',
+        callback_data: `card_next_${day}_${index}`
+      });
+    }
+
+    if (buttons.length > 0) {
+      keyboard.push(buttons);
+    }
+
+    // 카드 전송
+    await bot.sendPhoto(chatId, word.image_url, {
+      caption: caption,
+      reply_markup: keyboard.length > 0 ? {
+        inline_keyboard: keyboard
+      } : undefined
+    });
+
+  } catch (error) {
+    console.error('Error sending word card:', error);
+    await bot.sendMessage(chatId, '❌ 카드 전송 중 오류가 발생했습니다.');
+  }
+}
+
+/**
+ * Word Card Callback 핸들러 (버튼 클릭)
+ */
+async function handleWordCardCallback(bot, query) {
+  try {
+    const chatId = query.message.chat.id;
+    const data = query.data;
+
+    if (data.startsWith('card_')) {
       const parts = data.split('_');
-      const dayNumber = parseInt(parts[2]);
-      const nextIndex = parseInt(parts[3]);
+      const action = parts[1]; // prev 또는 next
+      const day = parseInt(parts[2]);
+      const currentIndex = parseInt(parts[3]);
 
-      const { data: words } = await supabase
-        .from('words')
-        .select('*')
-        .eq('day_number', dayNumber)
-        .order('sort_order');
+      let newIndex = currentIndex;
 
-      if (words && words[nextIndex]) {
-        await sendSingleCard(bot, chatId, words[nextIndex], nextIndex, words.length);
+      if (action === 'next') {
+        newIndex = currentIndex + 1;
+      } else if (action === 'prev') {
+        newIndex = currentIndex - 1;
       }
 
+      // 새 카드 전송
+      await sendWordCard(bot, chatId, day, newIndex);
+
+      // 버튼 클릭 응답 (로딩 표시 제거)
       await bot.answerCallbackQuery(query.id);
     }
 
-    // 발음 듣기
-    else if (data.startsWith('card_audio_')) {
-      const wordId = parseInt(data.split('_')[2]);
-      
-      const { data: word } = await supabase
-        .from('words')
-        .select('audio_url, korean')
-        .eq('id', wordId)
-        .single();
-
-      if (word?.audio_url) {
-        await bot.sendVoice(chatId, word.audio_url);
-      } else {
-        await bot.answerCallbackQuery(query.id, {
-          text: '🔊 음성 파일 준비 중입니다 / កំពុងរៀបចំ',
-          show_alert: false
-        });
-      }
-    }
-
-    // 완료
-    else if (data.startsWith('card_done_')) {
-      await bot.answerCallbackQuery(query.id, {
-        text: '👏 잘했어요! 저녁 7시에 퀴즈가 시작됩니다! / ល្អណាស់! ល្ងាចម៉ោង 7 នឹងមានកម្រងសំណួរ!',
-        show_alert: true
-      });
-    }
-
-    await bot.answerCallbackQuery(query.id);
-  } catch (err) {
-    console.error('Word card callback error:', err);
-    await bot.answerCallbackQuery(query.id);
+  } catch (error) {
+    console.error('Error handling word card callback:', error);
+    await bot.answerCallbackQuery(query.id, {
+      text: '오류가 발생했습니다.',
+      show_alert: true
+    });
   }
 }
 
-module.exports = { sendWordCards, handleWordCardCallback };
+module.exports = {
+  handleWordCardCallback,
+  sendWordCard
+};

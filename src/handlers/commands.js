@@ -1,4 +1,5 @@
 const { supabase } = require('../config/supabase');
+const { sendWordCard } = require('./wordcard');
 
 // ── /start 명령어 ──
 async function handleStart(bot, msg) {
@@ -124,6 +125,24 @@ async function handleHelp(bot, msg) {
   );
 }
 
+// ── /start_day 명령어 (학생용) ──
+async function handleStartDay(bot, msg, day) {
+  const chatId = msg.chat.id;
+  
+  await bot.sendMessage(chatId, `📚 Day ${day} 학습을 시작합니다!`);
+  
+  // 첫 번째 카드 전송
+  await sendWordCard(bot, chatId, parseInt(day), 0);
+}
+
+// ── /test_card 명령어 (테스트용) ──
+async function handleTestCard(bot, msg, day) {
+  const chatId = msg.chat.id;
+  
+  // 첫 번째 카드 전송
+  await sendWordCard(bot, chatId, parseInt(day), 0);
+}
+
 // ── 명령어 라우터 ──
 async function handleCommand(bot, msg, command) {
   switch (command) {
@@ -140,4 +159,9 @@ async function handleCommand(bot, msg, command) {
   }
 }
 
-module.exports = { handleStart, handleCommand };
+module.exports = { 
+  handleStart, 
+  handleCommand,
+  handleStartDay,
+  handleTestCard
+};

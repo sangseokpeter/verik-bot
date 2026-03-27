@@ -2,11 +2,10 @@
 // VERI-K Telegram Bot - Main Entry Point
 // Railway 24/7 Server
 // ============================================
-
 const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
 const { supabase } = require('./config/supabase');
-const { handleStart, handleCommand } = require('./handlers/commands');
+const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback } = require('./handlers/wordcard');
 const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS } = require('./handlers/admin');
@@ -29,6 +28,12 @@ bot.onText(/\/admin/, (msg) => handleAdminCommand(bot, msg));
 bot.onText(/\/broadcast (.+)/, (msg, match) => handleBroadcast(bot, msg, match[1]));
 bot.onText(/\/generate_cards (\d+)/, (msg, match) => handleGenerateCards(bot, msg, match[1]));
 bot.onText(/\/generate_tts (\d+)/, (msg, match) => handleGenerateTTS(bot, msg, match[1]));
+
+// 학생용: Day 학습 시작
+bot.onText(/\/start_day (\d+)/, (msg, match) => handleStartDay(bot, msg, match[1]));
+
+// 테스트용: 카드 네비게이션 테스트
+bot.onText(/\/test_card (\d+)/, (msg, match) => handleTestCard(bot, msg, match[1]));
 
 // ── 콜백 핸들러 (inline keyboard) ──
 bot.on('callback_query', async (query) => {
