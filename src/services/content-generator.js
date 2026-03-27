@@ -37,15 +37,21 @@ function generateCardWithPython(wordData, illustrationPath, outputPath) {
   const illPath = illustrationPath || 'none';
   
   try {
-    const result = execSync(
+    // Python 실행 (stdout/stderr 모두 캡처)
+    execSync(
       `python3 scripts/generate_card.py '${wordJson}' '${illPath}' '${outputPath}'`,
-      { timeout: 30000, cwd: process.cwd() }
+      { timeout: 30000, cwd: process.cwd(), stdio: 'inherit' }
     );
-    const output = result.toString().trim();
-    if (output.startsWith('OK:')) {
-      return true;
+    
+    // 파일이 실제로 생성되었는지 확인
+    if (fs.existsSync(outputPath)) {
+      const stats = fs.statSync(outputPath);
+      if (stats.size > 0) {
+        return true;
+      }
     }
-    console.error('Python card error:', output);
+    
+    console.error('Python card error: Output file not created or empty');
     return false;
   } catch (err) {
     console.error('Python exec error:', err.message);
