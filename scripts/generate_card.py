@@ -178,7 +178,7 @@ def generate_card(word, illustration_path, output_path, fonts):
     draw.text((km_x, km_y), meaning_khmer, font=fonts['km_b42'], fill='white')
 
     # ── EXAMPLE 섹션 ──
-    ex_y = word_y + 180
+    ex_y = word_y + 130  # 180 → 130 (위로 올림)
     draw.text((60, ex_y), "Example", font=fonts['kr_b32'], fill='#1A1A1A')
 
     # 예문 박스 (흰색 배경 먼저, 테두리 나중에)
