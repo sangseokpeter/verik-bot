@@ -146,8 +146,8 @@ async function generateCardsForDay(bot, dayNumber) {
 
   if (adminId) {
     await bot.sendMessage(adminId, `✅ Day ${dayNumber} 카드 생성 완료!\n성공: ${success}개 / 실패: ${failed}개`);
-    const { data: firstCard } = await supabase.from('words').select('*').eq('day_number', dayNumber).not('image_url', 'is', null).order('sort_order').limit(1).single();
-    if (firstCard?.image_url) {
+    const { data: firstCard } = await supabase.from('words').select('*').eq('day_number', dayNumber).not('image_url', 'is', null).neq('image_url', 'skip').order('sort_order').limit(1).single();
+    if (firstCard?.image_url && firstCard.image_url !== 'skip') {
       await bot.sendPhoto(adminId, firstCard.image_url, {
         reply_markup: { inline_keyboard: [[{ text: '✅ OK', callback_data: `admin_cards_ok_${dayNumber}` }, { text: '🔄 다시', callback_data: `admin_cards_redo_${dayNumber}` }]] }
       });
