@@ -80,7 +80,7 @@ def load_fonts():
     return fonts
 
 def generate_card(word, illustration_path, output_path, fonts):
-    W, H = 760, 1400
+    W, H = 760, 1100  # 1400 → 1100 (하단 공간 줄임)
     img = Image.new('RGBA', (W, H), '#F5F0E8')  # 베이지 배경
     draw = ImageDraw.Draw(img)
 
@@ -129,16 +129,16 @@ def generate_card(word, illustration_path, output_path, fonts):
 
     # ── 일러스트 영역 ──
     img_y = 110
-    img_h = 550
-    draw.rounded_rectangle((40, img_y, W-40, img_y+img_h), 20, fill='#2C2C2C')
+    img_size = 550  # 정사각형
+    draw.rounded_rectangle((40, img_y, W-40, img_y+img_size), 20, fill='#2C2C2C')
 
-    # DALL-E 일러스트
+    # DALL-E 일러스트 (1:1 정사각형)
     if illustration_path and os.path.exists(illustration_path):
         try:
             illust = Image.open(illustration_path).convert('RGBA')
-            illust = illust.resize((640, 500), Image.LANCZOS)
-            ix = (W - 640) // 2
-            iy = img_y + (img_h - 500) // 2
+            illust = illust.resize((500, 500), Image.LANCZOS)  # 1:1 정사각형
+            ix = (W - 500) // 2
+            iy = img_y + (img_size - 500) // 2
             img.paste(illust, (ix, iy), illust)
             draw = ImageDraw.Draw(img)
         except Exception as e:
@@ -148,10 +148,11 @@ def generate_card(word, illustration_path, output_path, fonts):
     speaker_x = W - 120
     speaker_y = img_y + 20
     draw.ellipse((speaker_x, speaker_y, speaker_x+70, speaker_y+70), fill='#5DADE2')
-    draw.text((speaker_x+15, speaker_y+15), "🔊", font=fonts['kr_b32'], fill='white')
+    # 스피커 이모지
+    draw.text((speaker_x+18, speaker_y+18), "🔊", font=fonts['kr_b28'], fill='white')
 
     # ── 한국어 단어 ──
-    word_y = img_y + img_h + 40
+    word_y = img_y + img_size + 40
     draw.text((60, word_y), korean, font=fonts['kr_b72'], fill='#1A1A1A')
     
     # 발음
@@ -160,10 +161,16 @@ def generate_card(word, illustration_path, output_path, fonts):
     # ── 크메르어 버튼 (오른쪽) ──
     khmer_btn_x = W - 240
     khmer_btn_y = word_y + 20
-    draw.rounded_rectangle((khmer_btn_x, khmer_btn_y, W-60, khmer_btn_y+70), 12, fill='#C62828')
+    khmer_btn_h = 70
+    draw.rounded_rectangle((khmer_btn_x, khmer_btn_y, W-60, khmer_btn_y+khmer_btn_h), 12, fill='#C62828')
+    
+    # 텍스트 중앙 정렬
     bb_km = draw.textbbox((0,0), meaning_khmer, font=fonts['km_b42'])
     km_w = bb_km[2] - bb_km[0]
-    draw.text((khmer_btn_x + (180-km_w)//2, khmer_btn_y + 12), meaning_khmer, font=fonts['km_b42'], fill='white')
+    km_h = bb_km[3] - bb_km[1]
+    km_x = khmer_btn_x + (180 - km_w) // 2
+    km_y = khmer_btn_y + (khmer_btn_h - km_h) // 2 - 5  # 약간 위로 조정
+    draw.text((km_x, km_y), meaning_khmer, font=fonts['km_b42'], fill='white')
 
     # ── EXAMPLE 섹션 ──
     ex_y = word_y + 180
