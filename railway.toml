@@ -2,10 +2,10 @@
 builder = "nixpacks"
 
 [build.nixpacks]
-aptPkgs = ["fontconfig", "fonts-noto-cjk", "fonts-noto-core"]
+aptPkgs = ["python3", "python3-pip", "fontconfig", "fonts-noto-cjk", "fonts-noto-core"]
 
 [deploy]
-startCommand = "cp fonts/*.ttf /usr/share/fonts/ 2>/dev/null; fc-cache -f; npm start"
+startCommand = "pip3 install Pillow --break-system-packages -q && fc-cache -f 2>/dev/null; npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"

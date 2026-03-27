@@ -1,31 +1,10 @@
 const OpenAI = require('openai');
 const { supabase } = require('../config/supabase');
-const sharp = require('sharp');
-const path = require('path');
+const { execSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// ── 폰트를 base64로 로드 (SVG 내장용) ──
-let fontBase64Regular = '';
-let fontBase64Bold = '';
-const fontDir = path.resolve(__dirname, '../../fonts');
-
-try {
-  const regularPath = path.join(fontDir, 'NotoSansKR-Regular.ttf');
-  const boldPath = path.join(fontDir, 'NotoSansKR-Bold.ttf');
-  
-  if (fs.existsSync(regularPath)) {
-    fontBase64Regular = fs.readFileSync(regularPath).toString('base64');
-    console.log('✅ Regular font loaded:', regularPath);
-  }
-  if (fs.existsSync(boldPath)) {
-    fontBase64Bold = fs.readFileSync(boldPath).toString('base64');
-    console.log('✅ Bold font loaded:', boldPath);
-  }
-} catch (err) {
-  console.error('Font load error:', err.message);
-}
 
 // ── DALL-E 일러스트 생성 ──
 async function generateWordImage(korean, meaningKhmer, category) {
@@ -44,120 +23,68 @@ async function generateWordImage(korean, meaningKhmer, category) {
   }
 }
 
-// ── SVG 카드 생성 ──
-function generateCardSVG(word, illustrationBase64, index, total, dayNumber) {
-  const W = 760;
-  const H = 980;
-  const pron = word.pronunciation ? word.pronunciation.replace('[', '').replace(']', '') : word.korean;
-  
-  // XML escape
-  const esc = (s) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-
-  const imgSection = illustrationBase64 
-    ? `<image href="data:image/png;base64,${illustrationBase64}" x="185" y="108" width="390" height="390" preserveAspectRatio="xMidYMid meet"/>`
-    : `<rect x="185" y="108" width="390" height="390" rx="20" fill="#E0E0E0"/><text x="380" y="320" text-anchor="middle" font-size="80" fill="#999">?</text>`;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-<defs>
-  <style>
-    @font-face {
-      font-family: 'KR';
-      src: url('data:font/ttf;base64,${fontBase64Regular}') format('truetype');
-      font-weight: 400;
-    }
-    @font-face {
-      font-family: 'KR';
-      src: url('data:font/ttf;base64,${fontBase64Bold}') format('truetype');
-      font-weight: 700;
-    }
-  </style>
-  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="#D4A843"/>
-    <stop offset="50%" stop-color="#F0D68A"/>
-    <stop offset="100%" stop-color="#D4A843"/>
-  </linearGradient>
-  <linearGradient id="green" x1="0" y1="0" x2="0.5" y2="1">
-    <stop offset="0%" stop-color="#E8F5E9"/>
-    <stop offset="100%" stop-color="#C8E6C9"/>
-  </linearGradient>
-</defs>
-
-<!-- 배경 + 테두리 -->
-<rect x="2" y="2" width="${W-4}" height="${H-4}" rx="32" fill="white" stroke="#1B2A4A" stroke-width="5"/>
-
-<!-- 골드 라인 상단 -->
-<rect x="5" y="5" width="${W-10}" height="8" fill="url(#gold)"/>
-
-<!-- 카드 번호 -->
-<circle cx="56" cy="52" r="22" fill="#1B2A4A"/>
-<polygon points="62,52 50,44 50,60" fill="#D4A843"/>
-<text x="86" y="60" font-family="KR" font-weight="700" font-size="26" fill="#1B2A4A">${index + 1} / ${total}</text>
-
-<!-- DAY 배지 -->
-<rect x="${W-180}" y="32" width="150" height="42" rx="16" fill="#1B2A4A"/>
-<text x="${W-105}" y="60" text-anchor="middle" font-family="KR" font-weight="700" font-size="22" fill="#D4A843">DAY ${dayNumber}</text>
-
-<!-- 이미지 영역 -->
-<rect x="36" y="88" width="${W-72}" height="420" rx="24" fill="url(#green)"/>
-${imgSection}
-
-<!-- 스피커 아이콘 -->
-<circle cx="${W-76}" cy="128" r="30" fill="rgba(27,42,74,0.8)"/>
-<text x="${W-76}" y="136" text-anchor="middle" font-size="24" fill="#D4A843">🔊</text>
-
-<!-- 한국어 단어 -->
-<text x="48" y="568" font-family="KR" font-weight="700" font-size="64" fill="#1B2A4A">${esc(word.korean)}</text>
-<text x="${48 + word.korean.length * 64 + 16}" y="568" font-family="KR" font-weight="400" font-size="26" fill="#B0B0B0">[${esc(pron)}]</text>
-
-<!-- 카테고리 배지 -->
-<rect x="${W-160}" y="540" width="112" height="36" rx="12" fill="#EEF2F7"/>
-<text x="${W-104}" y="564" text-anchor="middle" font-family="KR" font-weight="700" font-size="20" fill="#1B2A4A">${esc(word.category)}</text>
-
-<!-- 크메르어 뜻 -->
-<rect x="48" y="590" width="${W-96}" height="60" rx="16" fill="#F0F7ED" stroke="#4CAF50" stroke-width="3"/>
-<text x="${W/2}" y="630" text-anchor="middle" font-family="KR" font-weight="700" font-size="32" fill="#2E7D32">${esc(word.meaning_khmer)}</text>
-
-<!-- EXAMPLE -->
-<text x="48" y="688" font-family="KR" font-weight="700" font-size="18" fill="#C0C0C0">EXAMPLE</text>
-<rect x="48" y="700" width="${W-96}" height="80" rx="16" fill="#F9F9F9"/>
-<text x="68" y="732" font-family="KR" font-weight="700" font-size="24" fill="#555555">${esc(word.example_kr || '')}</text>
-<text x="68" y="762" font-family="KR" font-weight="400" font-size="18" fill="#AAAAAA">${esc(word.example_khmer || '')}</text>
-
-<!-- 골드 라인 하단 -->
-<rect x="5" y="${H-13}" width="${W-10}" height="8" fill="url(#gold)"/>
-</svg>`;
+// ── DALL-E 이미지 다운로드 ──
+async function downloadImage(url, savePath) {
+  const response = await fetch(url);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(savePath, buffer);
+  return savePath;
 }
 
-// ── SVG → PNG 변환 ──
-async function svgToPng(svgString) {
-  return sharp(Buffer.from(svgString)).png().toBuffer();
+// ── Python으로 카드 이미지 생성 ──
+function generateCardWithPython(wordData, illustrationPath, outputPath) {
+  const wordJson = JSON.stringify(wordData).replace(/'/g, "\\'");
+  const illPath = illustrationPath || 'none';
+  
+  try {
+    const result = execSync(
+      `python3 scripts/generate_card.py '${wordJson}' '${illPath}' '${outputPath}'`,
+      { timeout: 30000, cwd: process.cwd() }
+    );
+    const output = result.toString().trim();
+    if (output.startsWith('OK:')) {
+      return true;
+    }
+    console.error('Python card error:', output);
+    return false;
+  } catch (err) {
+    console.error('Python exec error:', err.message);
+    return false;
+  }
 }
 
 // ── 단어카드 이미지 생성 ──
 async function generateCardImage(word, index, total, dayNumber) {
-  // 1. DALL-E 일러스트
+  const tmpDir = '/tmp/verik-cards';
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+  // 1. DALL-E 일러스트 생성 + 다운로드
+  let illustrationPath = null;
   const illustrationUrl = await generateWordImage(word.korean, word.meaning_khmer, word.category);
-  
-  // 2. 일러스트를 base64로 변환
-  let illustrationBase64 = null;
   if (illustrationUrl) {
-    try {
-      const response = await fetch(illustrationUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      illustrationBase64 = buffer.toString('base64');
-    } catch (err) {
-      console.error('Image fetch error:', err.message);
-    }
+    illustrationPath = path.join(tmpDir, `illust_${word.id}.png`);
+    await downloadImage(illustrationUrl, illustrationPath);
   }
 
-  // 3. SVG 생성
-  const svg = generateCardSVG(word, illustrationBase64, index, total, dayNumber);
+  // 2. Python으로 카드 생성
+  const outputPath = path.join(tmpDir, `card_${word.id}.png`);
+  const wordData = {
+    ...word,
+    index: index,
+    total: total,
+    day_number: dayNumber
+  };
 
-  // 4. PNG 변환
-  const imageBuffer = await svgToPng(svg);
+  const success = generateCardWithPython(wordData, illustrationPath, outputPath);
+  if (!success || !fs.existsSync(outputPath)) {
+    console.error(`Card generation failed for ${word.korean}`);
+    return null;
+  }
 
-  // 5. Supabase 업로드
+  // 3. Supabase Storage 업로드
+  const imageBuffer = fs.readFileSync(outputPath);
   const fileName = `cards/day${dayNumber}/${word.id}_card.png`;
+  
   const { error: uploadError } = await supabase.storage
     .from('word-cards')
     .upload(fileName, imageBuffer, { contentType: 'image/png', upsert: true });
@@ -169,6 +96,13 @@ async function generateCardImage(word, index, total, dayNumber) {
 
   const { data: urlData } = supabase.storage.from('word-cards').getPublicUrl(fileName);
   await supabase.from('words').update({ image_url: urlData.publicUrl }).eq('id', word.id);
+
+  // 임시 파일 정리
+  try {
+    if (illustrationPath) fs.unlinkSync(illustrationPath);
+    fs.unlinkSync(outputPath);
+  } catch (e) {}
+
   return urlData.publicUrl;
 }
 
