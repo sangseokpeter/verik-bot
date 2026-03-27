@@ -13,24 +13,29 @@ import os
 # ── 폰트 경로 설정 ──
 FONT_PATHS = {
     'kr_bold': [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fonts', 'NotoSansKR-Bold.ttf'),
+        '/app/fonts/NotoSansKR-Bold.ttf',
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
-        '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc',
     ],
     'kr_regular': [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fonts', 'NotoSansKR-Regular.ttf'),
+        '/app/fonts/NotoSansKR-Regular.ttf',
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
     ],
     'khmer': [
         '/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf',
         '/usr/share/fonts/truetype/noto/NotoSansKhmer-Bold.ttf',
         '/usr/share/fonts/opentype/unifont/unifont.otf',
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fonts', 'NotoSansKR-Regular.ttf'),
     ]
 }
 
 def find_font(key):
-    for path in FONT_PATHS[key]:
-        if os.path.exists(path):
-            return path
+    for p in FONT_PATHS[key]:
+        if os.path.exists(p):
+            print(f"  Font [{key}]: {p}")
+            return p
+    print(f"  Font [{key}]: NOT FOUND")
     return None
 
 def load_fonts():
@@ -42,18 +47,20 @@ def load_fonts():
         print("ERROR: Korean fonts not found!", file=sys.stderr)
         sys.exit(1)
     
-    # TTC index 4 = Korean (KR)
-    idx = 4
+    # TTF = index 0, TTC = index 4 (KR)
+    kr_idx = 4 if kr_bold_path.endswith('.ttc') else 0
+    print(f"  Korean font index: {kr_idx} ({'TTC' if kr_idx == 4 else 'TTF'})")
+    
     fonts = {
-        'kr_b64': ImageFont.truetype(kr_bold_path, 64, index=idx),
-        'kr_b32': ImageFont.truetype(kr_bold_path, 32, index=idx),
-        'kr_b26': ImageFont.truetype(kr_bold_path, 26, index=idx),
-        'kr_b24': ImageFont.truetype(kr_bold_path, 24, index=idx),
-        'kr_b22': ImageFont.truetype(kr_bold_path, 22, index=idx),
-        'kr_b20': ImageFont.truetype(kr_bold_path, 20, index=idx),
-        'kr_b18': ImageFont.truetype(kr_bold_path, 18, index=idx),
-        'kr_r26': ImageFont.truetype(kr_reg_path, 26, index=idx),
-        'kr_r20': ImageFont.truetype(kr_reg_path, 20, index=idx),
+        'kr_b64': ImageFont.truetype(kr_bold_path, 64, index=kr_idx),
+        'kr_b32': ImageFont.truetype(kr_bold_path, 32, index=kr_idx),
+        'kr_b26': ImageFont.truetype(kr_bold_path, 26, index=kr_idx),
+        'kr_b24': ImageFont.truetype(kr_bold_path, 24, index=kr_idx),
+        'kr_b22': ImageFont.truetype(kr_bold_path, 22, index=kr_idx),
+        'kr_b20': ImageFont.truetype(kr_bold_path, 20, index=kr_idx),
+        'kr_b18': ImageFont.truetype(kr_bold_path, 18, index=kr_idx),
+        'kr_r26': ImageFont.truetype(kr_reg_path, 26, index=kr_idx),
+        'kr_r20': ImageFont.truetype(kr_reg_path, 20, index=kr_idx),
     }
     
     if khmer_path:
