@@ -1,8 +1,11 @@
 [build]
 builder = "nixpacks"
 
+[build.nixpacks]
+aptPkgs = ["fontconfig", "fonts-noto-cjk", "fonts-noto-core"]
+
 [deploy]
-startCommand = "npm start"
+startCommand = "cp fonts/*.ttf /usr/share/fonts/ 2>/dev/null; fc-cache -f; npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
