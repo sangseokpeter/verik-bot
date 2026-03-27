@@ -105,6 +105,11 @@ def generate_card(word, illustration_path, output_path, fonts):
     meaning_khmer = word.get('meaning_khmer', '')
     example_kr = word.get('example_kr', '')
     example_khmer = word.get('example_khmer', '')
+    
+    # DEBUG: 받은 데이터 출력
+    print(f"  DEBUG korean: {korean}", file=sys.stderr)
+    print(f"  DEBUG meaning_khmer: {meaning_khmer}", file=sys.stderr)
+    print(f"  DEBUG example_khmer: {example_khmer}", file=sys.stderr)
 
     # 배경
     draw.rounded_rectangle((0, 0, W, H), 32, fill='white')
