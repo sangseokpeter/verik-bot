@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-VERI-K Word Card Generator
-Railway에서 Node.js가 호출하는 Python 스크립트
-Usage: python3 generate_card.py <word_json> <illustration_path> <output_path>
+VERI-K Word Card Generator - New Design
+Based on Mobile Prototype PDF
 """
 
 import sys
@@ -53,47 +52,36 @@ def load_fonts():
     print(f"  Korean font index: {kr_idx} ({'TTC' if kr_idx == 4 else 'TTF'})", file=sys.stderr)
 
     fonts = {
-        'kr_b64': ImageFont.truetype(kr_bold_path, 64, index=kr_idx),
+        'kr_b72': ImageFont.truetype(kr_bold_path, 72, index=kr_idx),
+        'kr_b48': ImageFont.truetype(kr_bold_path, 48, index=kr_idx),
         'kr_b32': ImageFont.truetype(kr_bold_path, 32, index=kr_idx),
-        'kr_b26': ImageFont.truetype(kr_bold_path, 26, index=kr_idx),
+        'kr_b28': ImageFont.truetype(kr_bold_path, 28, index=kr_idx),
         'kr_b24': ImageFont.truetype(kr_bold_path, 24, index=kr_idx),
-        'kr_b22': ImageFont.truetype(kr_bold_path, 22, index=kr_idx),
         'kr_b20': ImageFont.truetype(kr_bold_path, 20, index=kr_idx),
-        'kr_b18': ImageFont.truetype(kr_bold_path, 18, index=kr_idx),
-        'kr_r26': ImageFont.truetype(kr_reg_path, 26, index=kr_idx),
+        'kr_r24': ImageFont.truetype(kr_reg_path, 24, index=kr_idx),
         'kr_r20': ImageFont.truetype(kr_reg_path, 20, index=kr_idx),
     }
 
     if khmer_path:
         try:
             print(f"  Loading Khmer font from: {khmer_path}", file=sys.stderr)
-            fonts['km_b32'] = ImageFont.truetype(khmer_path, 28)
-            fonts['km_r18'] = ImageFont.truetype(khmer_path, 16)
+            fonts['km_b42'] = ImageFont.truetype(khmer_path, 42)
+            fonts['km_r22'] = ImageFont.truetype(khmer_path, 22)
             print(f"  Khmer font loaded successfully", file=sys.stderr)
         except Exception as e:
             print(f"  Khmer font load error: {e}", file=sys.stderr)
-            # 폴백: 한국어 폰트 사용
-            fonts['km_b32'] = fonts['kr_b32']
-            fonts['km_r18'] = fonts['kr_r20']
+            fonts['km_b42'] = fonts['kr_b48']
+            fonts['km_r22'] = fonts['kr_r24']
     else:
         print(f"  WARNING: No Khmer font found, using Korean font as fallback", file=sys.stderr)
-        fonts['km_b32'] = fonts['kr_b32']
-        fonts['km_r18'] = fonts['kr_r20']
+        fonts['km_b42'] = fonts['kr_b48']
+        fonts['km_r22'] = fonts['kr_r24']
 
     return fonts
 
-def draw_gold_line(draw, y, W):
-    for x in range(5, W-5):
-        r = x / W
-        if r < 0.5:
-            c = (int(212+(240-212)*r*2), int(168+(214-168)*r*2), int(67+(138-67)*r*2))
-        else:
-            c = (int(240-(240-212)*(r-0.5)*2), int(214-(214-168)*(r-0.5)*2), int(138-(138-67)*(r-0.5)*2))
-        draw.rectangle((x, y, x+1, y+8), fill=c)
-
 def generate_card(word, illustration_path, output_path, fonts):
-    W, H = 760, 820
-    img = Image.new('RGBA', (W, H), (0,0,0,0))
+    W, H = 760, 1400
+    img = Image.new('RGBA', (W, H), '#F5F0E8')  # 베이지 배경
     draw = ImageDraw.Draw(img)
 
     index = word.get('index', 0)
@@ -101,84 +89,129 @@ def generate_card(word, illustration_path, output_path, fonts):
     day = word.get('day_number', 1)
     korean = word.get('korean', '')
     pron = word.get('pronunciation', f'[{korean}]')
-    category = word.get('category', '')
     meaning_khmer = word.get('meaning_khmer', '')
     example_kr = word.get('example_kr', '')
     example_khmer = word.get('example_khmer', '')
     
-    # DEBUG: 받은 데이터 출력
+    # DEBUG
     print(f"  DEBUG korean: {korean}", file=sys.stderr)
     print(f"  DEBUG meaning_khmer: {meaning_khmer}", file=sys.stderr)
-    print(f"  DEBUG example_khmer: {example_khmer}", file=sys.stderr)
 
-    # 배경
-    draw.rounded_rectangle((0, 0, W, H), 32, fill='white')
-    draw.rounded_rectangle((2, 2, W-2, H-2), 32, outline='#1B2A4A', width=5)
+    # ── 카드 테두리 ──
+    draw.rounded_rectangle((20, 20, W-20, H-20), 24, outline='#D4A843', width=4)
 
-    # 골드 라인
-    draw_gold_line(draw, 5, W)
-    draw_gold_line(draw, H-13, W)
+    # ── 프로그레스 바 ──
+    progress_y = 50
+    bar_w = 300
+    bar_h = 30
+    bar_x = 60
+    
+    # 배경 바
+    draw.rounded_rectangle((bar_x, progress_y, bar_x+bar_w, progress_y+bar_h), 15, fill='#E0E0E0')
+    
+    # 진행 바 (빨강)
+    progress = (index + 1) / total
+    filled_w = int(bar_w * progress)
+    if filled_w > 0:
+        draw.rounded_rectangle((bar_x, progress_y, bar_x+filled_w, progress_y+bar_h), 15, fill='#C62828')
+    
+    # 진행 텍스트
+    progress_text = f"{index + 1}/{total}"
+    draw.text((bar_x + bar_w + 20, progress_y + 5), progress_text, font=fonts['kr_b24'], fill='#C62828')
 
-    # 재생 버튼
-    draw.ellipse((34, 30, 78, 74), fill='#1B2A4A')
-    draw.polygon([(62, 52), (50, 44), (50, 60)], fill='#D4A843')
-    draw.text((86, 37), f"{index + 1} / {total}", font=fonts['kr_b26'], fill='#1B2A4A')
+    # ── DAY 배지 (오른쪽) ──
+    day_badge_x = W - 180
+    draw.rounded_rectangle((day_badge_x, progress_y, W-60, progress_y+bar_h), 15, fill='#C62828')
+    day_text = f"Day {day}"
+    bb = draw.textbbox((0,0), day_text, font=fonts['kr_b20'])
+    day_w = bb[2] - bb[0]
+    draw.text((day_badge_x + (120-day_w)//2, progress_y + 5), day_text, font=fonts['kr_b20'], fill='white')
 
-    # DAY 배지
-    draw.rounded_rectangle((W-180, 32, W-30, 74), 16, fill='#1B2A4A')
-    day_text = f"DAY {day}"
-    bb = draw.textbbox((0,0), day_text, font=fonts['kr_b22'])
-    draw.text((W-105-(bb[2]-bb[0])//2, 40), day_text, font=fonts['kr_b22'], fill='#D4A843')
+    # ── 일러스트 영역 ──
+    img_y = 110
+    img_h = 550
+    draw.rounded_rectangle((40, img_y, W-40, img_y+img_h), 20, fill='#2C2C2C')
 
-    # 일러스트 영역
-    imgY = 88
-    imgH = 440
-    draw.rounded_rectangle((36, imgY, W-36, imgY+imgH), 24, fill='#E0F2E0')
-
-    # DALL-E 일러스트 삽입
+    # DALL-E 일러스트
     if illustration_path and os.path.exists(illustration_path):
         try:
             illust = Image.open(illustration_path).convert('RGBA')
-            illust = illust.resize((380, 380), Image.LANCZOS)
-            ix = (W - 380) // 2
-            iy = imgY + (imgH - 380) // 2
+            illust = illust.resize((640, 500), Image.LANCZOS)
+            ix = (W - 640) // 2
+            iy = img_y + (img_h - 500) // 2
             img.paste(illust, (ix, iy), illust)
-            draw = ImageDraw.Draw(img)  # Re-create draw after paste
+            draw = ImageDraw.Draw(img)
         except Exception as e:
             print(f"Illustration error: {e}", file=sys.stderr)
 
-    # 스피커 아이콘
-    draw.ellipse((W-112, imgY+10, W-52, imgY+70), fill=(27,42,74,200))
-    draw.text((W-94, imgY+24), "🔊", font=fonts['kr_b22'], fill='#D4A843')
+    # ── 스피커 아이콘 (오른쪽 상단) ──
+    speaker_x = W - 120
+    speaker_y = img_y + 20
+    draw.ellipse((speaker_x, speaker_y, speaker_x+70, speaker_y+70), fill='#5DADE2')
+    draw.text((speaker_x+15, speaker_y+15), "🔊", font=fonts['kr_b32'], fill='white')
 
-    # 한국어 단어
-    wordY = imgY + imgH + 20
-    draw.text((48, wordY), korean, font=fonts['kr_b64'], fill='#1B2A4A')
-    bb_kr = draw.textbbox((0,0), korean, font=fonts['kr_b64'])
-    kr_width = bb_kr[2] - bb_kr[0]
-    draw.text((48 + kr_width + 16, wordY + 20), pron, font=fonts['kr_r26'], fill='#B0B0B0')
+    # ── 한국어 단어 ──
+    word_y = img_y + img_h + 40
+    draw.text((60, word_y), korean, font=fonts['kr_b72'], fill='#1A1A1A')
+    
+    # 발음
+    draw.text((60, word_y + 90), pron, font=fonts['kr_r24'], fill='#888888')
 
-    # 품사 배지
-    draw.rounded_rectangle((W-155, wordY+10, W-48, wordY+45), 12, fill='#EEF2F7')
-    bb = draw.textbbox((0,0), category, font=fonts['kr_b20'])
-    draw.text((W-101-(bb[2]-bb[0])//2, wordY+15), category, font=fonts['kr_b20'], fill='#1B2A4A')
+    # ── 크메르어 버튼 (오른쪽) ──
+    khmer_btn_x = W - 240
+    khmer_btn_y = word_y + 20
+    draw.rounded_rectangle((khmer_btn_x, khmer_btn_y, W-60, khmer_btn_y+70), 12, fill='#C62828')
+    bb_km = draw.textbbox((0,0), meaning_khmer, font=fonts['km_b42'])
+    km_w = bb_km[2] - bb_km[0]
+    draw.text((khmer_btn_x + (180-km_w)//2, khmer_btn_y + 12), meaning_khmer, font=fonts['km_b42'], fill='white')
 
-    # 크메르어 뜻
-    khmerY = wordY + 80
-    draw.rounded_rectangle((48, khmerY, W-48, khmerY+55), 16, fill='#F0F7ED', outline='#4CAF50', width=3)
-    bb = draw.textbbox((0,0), meaning_khmer, font=fonts['km_b32'])
-    draw.text((W//2-(bb[2]-bb[0])//2, khmerY+10), meaning_khmer, font=fonts['km_b32'], fill='#2E7D32')
+    # ── EXAMPLE 섹션 ──
+    ex_y = word_y + 180
+    draw.text((60, ex_y), "Example", font=fonts['kr_b32'], fill='#1A1A1A')
 
-    # EXAMPLE
-    exY = khmerY + 72
-    draw.text((48, exY), "EXAMPLE", font=fonts['kr_b18'], fill='#C0C0C0')
-    draw.rounded_rectangle((48, exY+24, W-48, exY+96), 16, fill='#F9F9F9')
+    # 예문 박스
+    ex_box_y = ex_y + 60
+    draw.rounded_rectangle((60, ex_box_y, W-60, ex_box_y+180), 16, fill='white', outline='#5DADE2', width=3)
+
+    # 한국어 예문 (노란색 하이라이트)
     if example_kr:
-        draw.text((68, exY+32), example_kr, font=fonts['kr_b24'], fill='#555555')
-    if example_khmer:
-        draw.text((68, exY+64), example_khmer, font=fonts['km_r18'], fill='#AAAAAA')
+        # 노란색 배경
+        kr_bb = draw.textbbox((0,0), korean, font=fonts['kr_b24'])
+        kr_word_w = kr_bb[2] - kr_bb[0]
+        
+        # 예문에서 단어 위치 찾기
+        if korean in example_kr:
+            before = example_kr.split(korean)[0]
+            before_bb = draw.textbbox((0,0), before, font=fonts['kr_b24'])
+            before_w = before_bb[2] - before_bb[0]
+            
+            # 노란색 하이라이트
+            draw.rectangle((90+before_w, ex_box_y+25, 90+before_w+kr_word_w, ex_box_y+55), fill='#FFEB3B')
+        
+        draw.text((90, ex_box_y+25), example_kr, font=fonts['kr_b24'], fill='#1A1A1A')
 
-    # 저장
+    # 크메르어 예문 (노란색 하이라이트)
+    if example_khmer:
+        # 크메르어 단어 찾기 및 하이라이트
+        if meaning_khmer in example_khmer:
+            before = example_khmer.split(meaning_khmer)[0]
+            before_bb = draw.textbbox((0,0), before, font=fonts['km_r22'])
+            before_w = before_bb[2] - before_bb[0]
+            
+            km_word_bb = draw.textbbox((0,0), meaning_khmer, font=fonts['km_r22'])
+            km_word_w = km_word_bb[2] - km_word_bb[0]
+            
+            draw.rectangle((90+before_w, ex_box_y+85, 90+before_w+km_word_w, ex_box_y+115), fill='#FFEB3B')
+        
+        draw.text((90, ex_box_y+85), example_khmer, font=fonts['km_r22'], fill='#555555')
+
+    # ── READ 버튼 ──
+    read_btn_x = W - 220
+    read_btn_y = ex_box_y + 60
+    draw.rounded_rectangle((read_btn_x, read_btn_y, W-100, read_btn_y+55), 12, fill='#C62828')
+    draw.text((read_btn_x+35, read_btn_y+12), "READ", font=fonts['kr_b28'], fill='white')
+
+    # ── 저장 ──
     img.save(output_path, 'PNG')
     print(f"OK:{output_path}")
 
