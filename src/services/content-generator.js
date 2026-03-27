@@ -1,44 +1,30 @@
 const OpenAI = require('openai');
 const { supabase } = require('../config/supabase');
-const { createCanvas, GlobalFonts, loadImage } = require('@napi-rs/canvas');
+const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ── 폰트 등록 (여러 경로 시도) ──
-const possibleFontDirs = [
-  path.resolve(__dirname, '../../fonts'),
-  path.resolve(process.cwd(), 'fonts'),
-  '/app/fonts',
-  path.resolve(__dirname, '../../../fonts')
-];
+// ── 폰트를 base64로 로드 (SVG 내장용) ──
+let fontBase64Regular = '';
+let fontBase64Bold = '';
+const fontDir = path.resolve(__dirname, '../../fonts');
 
-let fontsLoaded = false;
-for (const fontDir of possibleFontDirs) {
+try {
   const regularPath = path.join(fontDir, 'NotoSansKR-Regular.ttf');
   const boldPath = path.join(fontDir, 'NotoSansKR-Bold.ttf');
   
-  console.log(`🔍 Trying font dir: ${fontDir}`);
-  console.log(`   Regular exists: ${fs.existsSync(regularPath)}`);
-  console.log(`   Bold exists: ${fs.existsSync(boldPath)}`);
-  
-  if (fs.existsSync(regularPath) && fs.existsSync(boldPath)) {
-    try {
-      GlobalFonts.registerFromPath(regularPath, 'NotoSansKR');
-      GlobalFonts.registerFromPath(boldPath, 'NotoSansKRBold');
-      console.log(`✅ Korean fonts registered from: ${fontDir}`);
-      fontsLoaded = true;
-      break;
-    } catch (err) {
-      console.error(`Font registration error at ${fontDir}:`, err.message);
-    }
+  if (fs.existsSync(regularPath)) {
+    fontBase64Regular = fs.readFileSync(regularPath).toString('base64');
+    console.log('✅ Regular font loaded:', regularPath);
   }
-}
-
-if (!fontsLoaded) {
-  console.error('❌ Korean fonts NOT found in any path!');
-  console.log('Available fonts:', GlobalFonts.families);
+  if (fs.existsSync(boldPath)) {
+    fontBase64Bold = fs.readFileSync(boldPath).toString('base64');
+    console.log('✅ Bold font loaded:', boldPath);
+  }
+} catch (err) {
+  console.error('Font load error:', err.message);
 }
 
 // ── DALL-E 일러스트 생성 ──
@@ -58,197 +44,119 @@ async function generateWordImage(korean, meaningKhmer, category) {
   }
 }
 
-// ── 둥근 모서리 사각형 그리기 ──
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-// ── 카드 이미지 그리기 (Canvas) ──
-async function drawCard(word, illustrationUrl, index, total, dayNumber) {
+// ── SVG 카드 생성 ──
+function generateCardSVG(word, illustrationBase64, index, total, dayNumber) {
   const W = 760;
   const H = 980;
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
-
-  // ── 배경: 흰색 + 네이비 테두리 ──
-  ctx.fillStyle = '#FFFFFF';
-  roundRect(ctx, 0, 0, W, H, 32);
-  ctx.fill();
-
-  // 네이비 테두리
-  ctx.strokeStyle = '#1B2A4A';
-  ctx.lineWidth = 5;
-  roundRect(ctx, 2, 2, W - 4, H - 4, 32);
-  ctx.stroke();
-
-  // ── 골드 라인 (상단) ──
-  const goldGrad = ctx.createLinearGradient(0, 0, W, 0);
-  goldGrad.addColorStop(0, '#D4A843');
-  goldGrad.addColorStop(0.5, '#F0D68A');
-  goldGrad.addColorStop(1, '#D4A843');
-  ctx.fillStyle = goldGrad;
-  ctx.fillRect(5, 5, W - 10, 8);
-
-  // ── 헤더: 카드 번호 + DAY ──
-  // 카드 번호 (원형 배경)
-  ctx.fillStyle = '#1B2A4A';
-  ctx.beginPath();
-  ctx.arc(56, 52, 22, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#D4A843';
-  ctx.beginPath();
-  ctx.moveTo(62, 52);
-  ctx.lineTo(50, 44);
-  ctx.lineTo(50, 60);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = '#1B2A4A';
-  ctx.font = '26px NotoSansKRBold';
-  ctx.fillText(`${index + 1} / ${total}`, 86, 60);
-
-  // DAY 배지
-  roundRect(ctx, W - 180, 32, 150, 42, 16);
-  ctx.fillStyle = '#1B2A4A';
-  ctx.fill();
-  ctx.fillStyle = '#D4A843';
-  ctx.font = '22px NotoSansKRBold';
-  ctx.textAlign = 'center';
-  ctx.fillText(`DAY ${dayNumber}`, W - 105, 60);
-  ctx.textAlign = 'left';
-
-  // ── 이미지 영역 ──
-  const imgX = 36;
-  const imgY = 88;
-  const imgW = W - 72;
-  const imgH = 380;
-
-  // 연초록 배경
-  roundRect(ctx, imgX, imgY, imgW, imgH, 24);
-  const greenGrad = ctx.createLinearGradient(imgX, imgY, imgX + imgW, imgY + imgH);
-  greenGrad.addColorStop(0, '#E8F5E9');
-  greenGrad.addColorStop(1, '#C8E6C9');
-  ctx.fillStyle = greenGrad;
-  ctx.fill();
-
-  // DALL-E 일러스트 로드
-  if (illustrationUrl) {
-    try {
-      const response = await fetch(illustrationUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      const img = await loadImage(buffer);
-      const size = 320;
-      const ix = imgX + (imgW - size) / 2;
-      const iy = imgY + (imgH - size) / 2;
-      ctx.drawImage(img, ix, iy, size, size);
-    } catch (err) {
-      console.error('Image load error:', err.message);
-    }
-  }
-
-  // 스피커 아이콘 (원형)
-  ctx.fillStyle = 'rgba(27, 42, 74, 0.8)';
-  ctx.beginPath();
-  ctx.arc(imgX + imgW - 40, imgY + 40, 30, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#D4A843';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(imgX + imgW - 48, imgY + 36);
-  ctx.lineTo(imgX + imgW - 48, imgY + 44);
-  ctx.lineTo(imgX + imgW - 42, imgY + 44);
-  ctx.lineTo(imgX + imgW - 36, imgY + 48);
-  ctx.lineTo(imgX + imgW - 36, imgY + 32);
-  ctx.lineTo(imgX + imgW - 42, imgY + 36);
-  ctx.closePath();
-  ctx.stroke();
-
-  // ── 한국어 단어 ──
-  const textY = imgY + imgH + 50;
-  ctx.fillStyle = '#1B2A4A';
-  ctx.font = '64px NotoSansKRBold';
-  ctx.fillText(word.korean, 48, textY);
-
-  // 발음
-  const korWidth = ctx.measureText(word.korean).width;
   const pron = word.pronunciation ? word.pronunciation.replace('[', '').replace(']', '') : word.korean;
-  ctx.fillStyle = '#B0B0B0';
-  ctx.font = '26px NotoSansKR';
-  ctx.fillText(`[${pron}]`, 48 + korWidth + 16, textY);
+  
+  // XML escape
+  const esc = (s) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
 
-  // 카테고리 배지
-  ctx.font = '20px NotoSansKRBold';
-  const catWidth = ctx.measureText(word.category).width;
-  const catX = W - 48 - catWidth - 32;
-  roundRect(ctx, catX, textY - 28, catWidth + 32, 36, 12);
-  ctx.fillStyle = '#EEF2F7';
-  ctx.fill();
-  ctx.fillStyle = '#1B2A4A';
-  ctx.fillText(word.category, catX + 16, textY - 2);
+  const imgSection = illustrationBase64 
+    ? `<image href="data:image/png;base64,${illustrationBase64}" x="185" y="108" width="390" height="390" preserveAspectRatio="xMidYMid meet"/>`
+    : `<rect x="185" y="108" width="390" height="390" rx="20" fill="#E0E0E0"/><text x="380" y="320" text-anchor="middle" font-size="80" fill="#999">?</text>`;
 
-  // ── 크메르어 뜻 (초록 상자) ──
-  const khmerY = textY + 30;
-  roundRect(ctx, 48, khmerY, W - 96, 60, 16);
-  ctx.fillStyle = '#F0F7ED';
-  ctx.fill();
-  ctx.strokeStyle = '#4CAF50';
-  ctx.lineWidth = 3;
-  roundRect(ctx, 48, khmerY, W - 96, 60, 16);
-  ctx.stroke();
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+<defs>
+  <style>
+    @font-face {
+      font-family: 'KR';
+      src: url('data:font/ttf;base64,${fontBase64Regular}') format('truetype');
+      font-weight: 400;
+    }
+    @font-face {
+      font-family: 'KR';
+      src: url('data:font/ttf;base64,${fontBase64Bold}') format('truetype');
+      font-weight: 700;
+    }
+  </style>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#D4A843"/>
+    <stop offset="50%" stop-color="#F0D68A"/>
+    <stop offset="100%" stop-color="#D4A843"/>
+  </linearGradient>
+  <linearGradient id="green" x1="0" y1="0" x2="0.5" y2="1">
+    <stop offset="0%" stop-color="#E8F5E9"/>
+    <stop offset="100%" stop-color="#C8E6C9"/>
+  </linearGradient>
+</defs>
 
-  ctx.fillStyle = '#2E7D32';
-  ctx.font = '32px NotoSansKRBold';
-  ctx.textAlign = 'center';
-  ctx.fillText(word.meaning_khmer, W / 2, khmerY + 42);
-  ctx.textAlign = 'left';
+<!-- 배경 + 테두리 -->
+<rect x="2" y="2" width="${W-4}" height="${H-4}" rx="32" fill="white" stroke="#1B2A4A" stroke-width="5"/>
 
-  // ── EXAMPLE ──
-  const exY = khmerY + 80;
-  ctx.fillStyle = '#C0C0C0';
-  ctx.font = '18px NotoSansKRBold';
-  ctx.fillText('EXAMPLE', 48, exY);
+<!-- 골드 라인 상단 -->
+<rect x="5" y="5" width="${W-10}" height="8" fill="url(#gold)"/>
 
-  // 예문 배경
-  roundRect(ctx, 48, exY + 12, W - 96, 80, 16);
-  ctx.fillStyle = '#F9F9F9';
-  ctx.fill();
+<!-- 카드 번호 -->
+<circle cx="56" cy="52" r="22" fill="#1B2A4A"/>
+<polygon points="62,52 50,44 50,60" fill="#D4A843"/>
+<text x="86" y="60" font-family="KR" font-weight="700" font-size="26" fill="#1B2A4A">${index + 1} / ${total}</text>
 
-  // 한국어 예문
-  if (word.example_kr) {
-    ctx.fillStyle = '#555555';
-    ctx.font = '24px NotoSansKRBold';
-    ctx.fillText(word.example_kr, 68, exY + 42);
-  }
+<!-- DAY 배지 -->
+<rect x="${W-180}" y="32" width="150" height="42" rx="16" fill="#1B2A4A"/>
+<text x="${W-105}" y="60" text-anchor="middle" font-family="KR" font-weight="700" font-size="22" fill="#D4A843">DAY ${dayNumber}</text>
 
-  // 크메르어 예문
-  if (word.example_khmer) {
-    ctx.fillStyle = '#AAAAAA';
-    ctx.font = '18px NotoSansKR';
-    ctx.fillText(word.example_khmer, 68, exY + 72);
-  }
+<!-- 이미지 영역 -->
+<rect x="36" y="88" width="${W-72}" height="420" rx="24" fill="url(#green)"/>
+${imgSection}
 
-  // ── 골드 라인 (하단) ──
-  ctx.fillStyle = goldGrad;
-  ctx.fillRect(5, H - 13, W - 10, 8);
+<!-- 스피커 아이콘 -->
+<circle cx="${W-76}" cy="128" r="30" fill="rgba(27,42,74,0.8)"/>
+<text x="${W-76}" y="136" text-anchor="middle" font-size="24" fill="#D4A843">🔊</text>
 
-  return canvas.encode('png');
+<!-- 한국어 단어 -->
+<text x="48" y="568" font-family="KR" font-weight="700" font-size="64" fill="#1B2A4A">${esc(word.korean)}</text>
+<text x="${48 + word.korean.length * 64 + 16}" y="568" font-family="KR" font-weight="400" font-size="26" fill="#B0B0B0">[${esc(pron)}]</text>
+
+<!-- 카테고리 배지 -->
+<rect x="${W-160}" y="540" width="112" height="36" rx="12" fill="#EEF2F7"/>
+<text x="${W-104}" y="564" text-anchor="middle" font-family="KR" font-weight="700" font-size="20" fill="#1B2A4A">${esc(word.category)}</text>
+
+<!-- 크메르어 뜻 -->
+<rect x="48" y="590" width="${W-96}" height="60" rx="16" fill="#F0F7ED" stroke="#4CAF50" stroke-width="3"/>
+<text x="${W/2}" y="630" text-anchor="middle" font-family="KR" font-weight="700" font-size="32" fill="#2E7D32">${esc(word.meaning_khmer)}</text>
+
+<!-- EXAMPLE -->
+<text x="48" y="688" font-family="KR" font-weight="700" font-size="18" fill="#C0C0C0">EXAMPLE</text>
+<rect x="48" y="700" width="${W-96}" height="80" rx="16" fill="#F9F9F9"/>
+<text x="68" y="732" font-family="KR" font-weight="700" font-size="24" fill="#555555">${esc(word.example_kr || '')}</text>
+<text x="68" y="762" font-family="KR" font-weight="400" font-size="18" fill="#AAAAAA">${esc(word.example_khmer || '')}</text>
+
+<!-- 골드 라인 하단 -->
+<rect x="5" y="${H-13}" width="${W-10}" height="8" fill="url(#gold)"/>
+</svg>`;
+}
+
+// ── SVG → PNG 변환 ──
+async function svgToPng(svgString) {
+  return sharp(Buffer.from(svgString)).png().toBuffer();
 }
 
 // ── 단어카드 이미지 생성 ──
 async function generateCardImage(word, index, total, dayNumber) {
+  // 1. DALL-E 일러스트
   const illustrationUrl = await generateWordImage(word.korean, word.meaning_khmer, word.category);
-  const imageBuffer = await drawCard(word, illustrationUrl, index, total, dayNumber);
+  
+  // 2. 일러스트를 base64로 변환
+  let illustrationBase64 = null;
+  if (illustrationUrl) {
+    try {
+      const response = await fetch(illustrationUrl);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      illustrationBase64 = buffer.toString('base64');
+    } catch (err) {
+      console.error('Image fetch error:', err.message);
+    }
+  }
 
+  // 3. SVG 생성
+  const svg = generateCardSVG(word, illustrationBase64, index, total, dayNumber);
+
+  // 4. PNG 변환
+  const imageBuffer = await svgToPng(svg);
+
+  // 5. Supabase 업로드
   const fileName = `cards/day${dayNumber}/${word.id}_card.png`;
   const { error: uploadError } = await supabase.storage
     .from('word-cards')
