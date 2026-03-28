@@ -6,54 +6,59 @@ async function handleStart(bot, msg) {
   const chatId = msg.chat.id;
   const user = msg.from;
 
-  // 학생 등록 또는 업데이트
   const { data: existing } = await supabase
     .from('students')
-    .select('id')
+    .select('id, first_name, current_day')
     .eq('id', chatId)
     .single();
 
   if (!existing) {
+    // 신규 학생 등록
     await supabase.from('students').insert({
       id: chatId,
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       username: user.username || '',
       current_day: 1,
-      start_date: new Date().toISOString().split('T')[0]
+      start_date: new Date().toISOString().split('T')[0],
+      is_active: true
     });
 
+    // 학생에게 크메르어로 환영 메시지
     await bot.sendMessage(chatId,
-      `🎉 សួស្តី ${user.first_name}!\n\n` +
-      `VERI-K 한국어 학습 봇에 오신 것을 환영합니다!\n` +
-      `សូមស្វាគមន៍មកកាន់ VERI-K!\n\n` +
-      `📚 60일 한국어 학습 프로그램\n` +
-      `🎯 목표: TOPIK I Level 2\n\n` +
-      `매일 아침 7시에 단어카드가 전송됩니다.\n` +
-      `រៀងរាល់ព្រឹក 7AM នឹងផ្ញើកាតពាក្យ។\n\n` +
-      `명령어 / បញ្ជា:\n` +
-      `/quiz - 퀴즈 시작 / ចាប់ផ្តើមកម្រងសំណួរ\n` +
-      `/progress - 학습 현황 / ស្ថានភាពរៀន\n` +
-      `/help - 도움말 / ជំនួយ`
+      `🎉 សូមស្វាគមន៍ ${user.first_name}!\n\n` +
+      `📚 VERI-K ជាកម្មវិធីរៀនភាសាកូរ៉េ 35 ថ្ងៃ!\n` +
+      `🎯 គោលដៅ: TOPIK I Level 2\n\n` +
+      `⏰ កាលវិភាគប្រចាំថ្ងៃ:\n` +
+      `   🌅 ម៉ោង 7 ព្រឹក → កាតពាក្យ\n` +
+      `   🎬 ម៉ោង 8 ព្រឹក → វីដេអូមេរៀន\n` +
+      `   📝 ម៉ោង 7 យប់ → កម្រងសំណួរ\n\n` +
+      `📌 បញ្ជា:\n` +
+      `/progress - ស្ថានភាពរៀន\n` +
+      `/help - ជំនួយ\n\n` +
+      `💪 ចាប់ផ្តើមហើយ! អ្នកអាចធ្វើបាន!`
     );
 
-    // 관리자에게 알림
+    // Admin에게 영어로 알림
     const { data: config } = await supabase
-      .from('admin_config')
-      .select('value')
-      .eq('key', 'admin_chat_id')
-      .single();
+      .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
 
     if (config?.value) {
       await bot.sendMessage(config.value,
-        `📋 새 학생 등록!\n이름: ${user.first_name} ${user.last_name || ''}\n` +
-        `Username: @${user.username || 'N/A'}\nID: ${chatId}`
+        `📋 New student registered!\n` +
+        `Name: ${user.first_name} ${user.last_name || ''}\n` +
+        `Username: @${user.username || 'N/A'}\n` +
+        `Telegram ID: ${chatId}\n` +
+        `Start Day: 1`
       );
     }
   } else {
+    // 기존 학생 재방문 (크메르어)
     await bot.sendMessage(chatId,
-      `👋 ${user.first_name}, 다시 오셨군요!\n\n` +
-      `/quiz - 퀴즈 시작\n/progress - 학습 현황`
+      `👋 សូមស្វាគមន៍ ${existing.first_name}!\n\n` +
+      `📅 អ្នកកំពុងនៅថ្ងៃទី ${existing.current_day} / 35\n\n` +
+      `/progress - ស្ថានភាពរៀន\n` +
+      `/help - ជំនួយ`
     );
   }
 }
@@ -63,16 +68,14 @@ async function handleProgress(bot, msg) {
   const chatId = msg.chat.id;
 
   const { data: student } = await supabase
-    .from('students')
-    .select('*')
-    .eq('id', chatId)
-    .single();
+    .from('students').select('*').eq('id', chatId).single();
 
   if (!student) {
-    return bot.sendMessage(chatId, '먼저 /start 로 등록해주세요!');
+    return bot.sendMessage(chatId,
+      `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!\n(먼저 /start 로 등록해주세요!)`
+    );
   }
 
-  // 퀴즈 통계
   const { data: sessions } = await supabase
     .from('quiz_sessions')
     .select('total_questions, correct_answers')
@@ -83,22 +86,22 @@ async function handleProgress(bot, msg) {
   const totalCorrect = sessions?.reduce((sum, s) => sum + s.correct_answers, 0) || 0;
   const accuracy = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
 
-  // 틀린 단어 수
   const { count: wrongCount } = await supabase
     .from('wrong_word_tracker')
     .select('id', { count: 'exact' })
     .eq('student_id', chatId)
     .eq('is_mastered', false);
 
-  const progressBar = makeProgressBar(student.current_day, 58);
+  const progressBar = makeProgressBar(student.current_day, 35);
 
+  // 크메르어로 진도 표시
   await bot.sendMessage(chatId,
-    `📊 학습 현황 / ស្ថានភាពរៀន\n\n` +
-    `📅 학습일: Day ${student.current_day} / 58\n` +
+    `📊 ស្ថានភាពរៀន\n\n` +
+    `📅 ថ្ងៃទី ${student.current_day} / 35\n` +
     `${progressBar}\n\n` +
-    `📝 퀴즈 정답률: ${accuracy}% (${totalCorrect}/${totalQ})\n` +
-    `🔄 복습 필요 단어: ${wrongCount || 0}개\n\n` +
-    `💪 화이팅! អ្នកអាចធ្វើបាន!`
+    `📝 ភាគរយត្រូវ: ${accuracy}% (${totalCorrect}/${totalQ})\n` +
+    `🔄 ពាក្យត្រូវការពិនិត្យ: ${wrongCount || 0}\n\n` +
+    `💪 អ្នកអាចធ្វើបាន!`
   );
 }
 
@@ -111,35 +114,31 @@ function makeProgressBar(current, total) {
 // ── /help 명령어 ──
 async function handleHelp(bot, msg) {
   await bot.sendMessage(msg.chat.id,
-    `📖 VERI-K 도움말\n\n` +
-    `🕐 일일 스케줄:\n` +
-    `  7AM - 단어카드 전송\n` +
-    `  8AM - 동영상 강의 링크\n` +
-    `  7PM - 퀴즈 + 듣기 문제\n\n` +
-    `📝 명령어:\n` +
-    `/start - 등록/재시작\n` +
-    `/quiz - 퀴즈 시작\n` +
-    `/progress - 학습 현황\n` +
-    `/help - 이 도움말\n\n` +
-    `❓ 질문이 있으면 메시지를 보내세요!`
+    `📖 ជំនួយ VERI-K\n\n` +
+    `⏰ កាលវិភាគ:\n` +
+    `  🌅 ម៉ោង 7 ព្រឹក - កាតពាក្យ\n` +
+    `  🎬 ម៉ោង 8 ព្រឹក - វីដេអូ\n` +
+    `  📝 ម៉ោង 7 យប់ - កម្រងសំណួរ\n\n` +
+    `📌 បញ្ជា:\n` +
+    `/start - ចុះឈ្មោះ\n` +
+    `/progress - ស្ថានភាពរៀន\n` +
+    `/help - ជំនួយ\n\n` +
+    `❓ មានសំណួរ? ផ្ញើសារមកបាន!`
   );
 }
 
-// ── /start_day 명령어 (학생용) ──
+// ── /start_day 명령어 ──
 async function handleStartDay(bot, msg, day) {
   const chatId = msg.chat.id;
-  
-  await bot.sendMessage(chatId, `📚 Day ${day} 학습을 시작합니다!`);
-  
-  // 첫 번째 카드 전송
+  await bot.sendMessage(chatId,
+    `📚 ចាប់ផ្តើមថ្ងៃទី ${day}!\n(Day ${day} 학습을 시작합니다!)`
+  );
   await sendWordCard(bot, chatId, parseInt(day), 0);
 }
 
-// ── /test_card 명령어 (테스트용) ──
+// ── /test_card 명령어 ──
 async function handleTestCard(bot, msg, day) {
   const chatId = msg.chat.id;
-  
-  // 첫 번째 카드 전송
   await sendWordCard(bot, chatId, parseInt(day), 0);
 }
 
@@ -159,8 +158,8 @@ async function handleCommand(bot, msg, command) {
   }
 }
 
-module.exports = { 
-  handleStart, 
+module.exports = {
+  handleStart,
   handleCommand,
   handleStartDay,
   handleTestCard

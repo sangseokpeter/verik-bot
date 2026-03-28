@@ -2,47 +2,37 @@ const { supabase } = require('../config/supabase');
 const { sendWordCards } = require('../handlers/wordcard');
 const { startQuiz } = require('../handlers/quiz');
 
-// ── 아침 7시: 동기부여 쇼츠 + 단어카드 ──
+// ── 아침 7시: 단어카드 전송 (학생별 current_day 기준) ──
 async function sendMorningContent(bot) {
   const { data: students } = await supabase
     .from('students')
-    .select('id, current_day')
+    .select('id, first_name, current_day')
     .eq('is_active', true);
 
-  if (!students) return;
+  if (!students || students.length === 0) return;
 
-  // 동기부여 쇼츠 URL
-  const { data: config } = await supabase
-    .from('admin_config')
-    .select('value')
-    .eq('key', 'motivation_video_url')
-    .single();
-
-  const videoUrl = config?.value;
+  const dayOfWeek = new Date().getDay(); // 0=일, 6=토
 
   for (const student of students) {
     try {
-      const dayOfWeek = new Date().getDay(); // 0=일, 6=토
-
       if (dayOfWeek === 6) {
-        // 토요일: 주간 요약 메시지
+        // 토요일: 주간 복습 안내 (크메르어)
         await bot.sendMessage(student.id,
-          `🌟 주말 종합 복습!\n\n` +
-          `📚 이번 주 배운 내용을 총정리합니다.\n` +
-          `សប្តាហ៍នេះយើងនឹងធ្វើការពិនិត្យឡើងវិញទាំងអស់។\n\n` +
-          `저녁 7시에 종합 퀴즈 30문제 + 듣기 10문제가 나옵니다!`
+          `🌟 សួស្តី ${student.first_name}!\n\n` +
+          `🔄 ថ្ងៃសៅរ៍នេះ គឺជាថ្ងៃពិនិត្យឡើងវិញ!\n` +
+          `(토요일: 주간 복습의 날)\n\n` +
+          `📚 នៅម៉ោង 7 យប់ នឹងមានកម្រងសំណួរ 30 ពាក្យ + 10 ស្តាប់!\n` +
+          `(저녁 7시에 종합 퀴즈 30문제 + 듣기 10문제)`
         );
       } else {
-        // 평일: 쇼츠 + 단어카드
-        if (videoUrl) {
-          await bot.sendMessage(student.id,
-            `🌅 좋은 아침이에요! / អរុណសួស្តី!\n\n` +
-            `Day ${student.current_day}/58 🎯\n` +
-            `여러분 오늘도 힘차게 한국어 공부를 같이 해 봐요! 💪`
-          );
-          await bot.sendVideo(student.id, videoUrl);
-        }
-
+        // 평일: 단어카드 전송 (크메르어)
+        await bot.sendMessage(student.id,
+          `🌅 អរុណសួស្តី ${student.first_name}!\n\n` +
+          `📅 ថ្ងៃទី ${student.current_day} / 35 🎯\n\n` +
+          `📚 ចាប់ផ្តើមរៀនពាក្យថ្ងៃនេះ!\n` +
+          `(오늘의 단어카드를 시작합니다!)\n\n` +
+          `💪 អ្នកអាចធ្វើបាន! ហ្វឹកហាត់ខ្លាំងៗ!`
+        );
         // 단어카드 전송
         await sendWordCards(bot, student.id, student.current_day);
       }
@@ -55,8 +45,17 @@ async function sendMorningContent(bot) {
       }, { onConflict: 'student_id, activity_date' });
 
     } catch (err) {
-      console.error(`Morning send failed for ${student.id}:`, err.message);
+      console.error(`Morning send failed for student ${student.id}:`, err.message);
     }
+  }
+
+  // Admin 알림 (영어)
+  const { data: config } = await supabase
+    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+  if (config?.value) {
+    await bot.sendMessage(config.value,
+      `✅ Morning word cards sent to ${students.length} students.`
+    );
   }
 
   console.log(`📚 Morning content sent to ${students.length} students`);
@@ -66,10 +65,10 @@ async function sendMorningContent(bot) {
 async function sendVideoLinks(bot) {
   const { data: students } = await supabase
     .from('students')
-    .select('id, current_day')
+    .select('id, first_name, current_day')
     .eq('is_active', true);
 
-  if (!students) return;
+  if (!students || students.length === 0) return;
 
   for (const student of students) {
     try {
@@ -81,34 +80,37 @@ async function sendVideoLinks(bot) {
 
       if (!videos || videos.length === 0) continue;
 
-      let videoText = `🎬 오늘의 강의 / មេរៀនថ្ងៃនេះ\n\n`;
-      
+      // 크메르어 메시지
+      let videoText = `🎬 វីដេអូមេរៀនថ្ងៃនេះ!\n(오늘의 강의 영상)\n\n`;
+
       for (const vid of videos) {
-        const label = vid.sub_unit 
+        const label = vid.sub_unit
           ? `${vid.unit} - ${vid.sub_unit}`
           : vid.unit;
         videoText += `📺 ${label}\n${vid.youtube_url}\n\n`;
       }
 
-      videoText += `열심히 공부해요! / រៀនឱ្យខ្លាំង! 💪`;
+      videoText += `💪 មើលឱ្យចប់ហើយរៀន!\n(끝까지 보고 공부해요!)`;
 
       await bot.sendMessage(student.id, videoText, {
         disable_web_page_preview: false
       });
     } catch (err) {
-      console.error(`Video send failed for ${student.id}:`, err.message);
+      console.error(`Video send failed for student ${student.id}:`, err.message);
     }
   }
+
+  console.log(`🎬 Video links sent to ${students.length} students`);
 }
 
-// ── 저녁 7시: 퀴즈 + 듣기 ──
+// ── 저녁 7시: 퀴즈 전송 + 진도 업데이트 ──
 async function sendEveningQuiz(bot) {
   const { data: students } = await supabase
     .from('students')
-    .select('id, current_day')
+    .select('id, first_name, current_day')
     .eq('is_active', true);
 
-  if (!students) return;
+  if (!students || students.length === 0) return;
 
   const dayOfWeek = new Date().getDay();
   const isWeekend = dayOfWeek === 6; // 토요일
@@ -116,46 +118,58 @@ async function sendEveningQuiz(bot) {
   for (const student of students) {
     try {
       if (isWeekend) {
+        // 토요일: 주간 종합 퀴즈 (크메르어)
         await bot.sendMessage(student.id,
-          `📝 주말 종합 퀴즈! / កម្រងសំណួរសរុប!\n\n` +
-          `📚 단어 30문제 + 🎧 듣기 10문제\n\n` +
-          `준비됐으면 아래 버튼을 눌러주세요!`,
+          `📝 ដល់ពេលធ្វើតេស្តហើយ! 🎯\n\n` +
+          `📚 ពាក្យ 30 + 🎧 ស្តាប់ 10\n` +
+          `(단어 30문제 + 듣기 10문제)\n\n` +
+          `ចុចប៊ូតុងខាងក្រោមដើម្បីចាប់ផ្តើម!`,
           {
             reply_markup: {
               inline_keyboard: [[
-                { text: '📝 종합 퀴즈 시작!', callback_data: 'quiz_start_weekly' }
+                { text: '📝 ចាប់ផ្តើម! (시작)', callback_data: 'quiz_start_weekly' }
               ]]
             }
           }
         );
       } else {
+        // 평일: 일일 퀴즈 (크메르어)
         await bot.sendMessage(student.id,
-          `📝 오늘의 퀴즈 시간! / ពេលធ្វើកម្រងសំណួរ!\n\n` +
-          `📚 단어 15문제 + 🎧 듣기 5문제\n\n` +
-          `준비됐으면 시작하세요!`,
+          `📝 ដល់ពេលធ្វើតេស្តហើយ! 🎯\n\n` +
+          `📚 ពាក្យ 15 + 🎧 ស្តាប់ 5\n` +
+          `(단어 15문제 + 듣기 5문제)\n\n` +
+          `ចុចប៊ូតុងខាងក្រោមដើម្បីចាប់ផ្តើម!`,
           {
             reply_markup: {
               inline_keyboard: [[
-                { text: '📝 퀴즈 시작!', callback_data: 'quiz_start_daily' }
+                { text: '📝 ចាប់ផ្តើម! (시작)', callback_data: 'quiz_start_daily' }
               ]]
             }
           }
         );
-      }
 
-      // 하루 진도 +1 (평일만)
-      if (!isWeekend) {
-        const newDay = Math.min(student.current_day + 1, 58);
+        // 진도 +1 (평일만, 최대 35일)
+        const newDay = Math.min(student.current_day + 1, 35);
         await supabase.from('students').update({
           current_day: newDay,
           last_active: new Date().toISOString()
         }).eq('id', student.id);
       }
-
     } catch (err) {
-      console.error(`Quiz send failed for ${student.id}:`, err.message);
+      console.error(`Quiz send failed for student ${student.id}:`, err.message);
     }
   }
+
+  // Admin 알림 (영어)
+  const { data: config } = await supabase
+    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+  if (config?.value) {
+    await bot.sendMessage(config.value,
+      `✅ Evening quiz sent to ${students.length} students.`
+    );
+  }
+
+  console.log(`📝 Evening quiz sent to ${students.length} students`);
 }
 
 // ── 듣기 문제 전송 ──
@@ -168,23 +182,22 @@ async function sendListeningQuestions(bot, chatId, dayNumber, count) {
     .limit(count);
 
   if (!questions || questions.length === 0) {
-    await bot.sendMessage(chatId, '🎧 듣기 문제 준비 중입니다. / កំពុងរៀបចំសំណួរស្តាប់។');
+    await bot.sendMessage(chatId,
+      `🎧 កំពុងរៀបចំសំណួរស្តាប់...\n(듣기 문제 준비 중입니다.)`
+    );
     return;
   }
 
-  await bot.sendMessage(chatId, `🎧 듣기 평가 시작! / ចាប់ផ្តើមតេស្តស្តាប់!\n${questions.length}문제`);
+  await bot.sendMessage(chatId,
+    `🎧 ចាប់ផ្តើមតេស្តស្តាប់!\n(듣기 평가 시작!) ${questions.length} សំណួរ`
+  );
 
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
+    if (q.audio_url) await bot.sendVoice(chatId, q.audio_url);
 
-    // 음원 전송
-    if (q.audio_url) {
-      await bot.sendVoice(chatId, q.audio_url);
-    }
-
-    // 문제 전송
     await bot.sendMessage(chatId,
-      `🎧 듣기 ${i + 1}/${questions.length}\n\n${q.question_text}`,
+      `🎧 ${i + 1}/${questions.length}\n\n${q.question_text}`,
       {
         reply_markup: {
           inline_keyboard: [
