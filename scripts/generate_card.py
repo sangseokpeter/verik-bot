@@ -65,8 +65,8 @@ def load_fonts():
     if khmer_path:
         try:
             print(f"  Loading Khmer font from: {khmer_path}", file=sys.stderr)
-            fonts['km_b42'] = ImageFont.truetype(khmer_path, 42)
-            fonts['km_r22'] = ImageFont.truetype(khmer_path, 22)
+            fonts['km_b42'] = ImageFont.truetype(khmer_path, 29)  # 42 * 0.7
+            fonts['km_r22'] = ImageFont.truetype(khmer_path, 15)  # 22 * 0.7
             print(f"  Khmer font loaded successfully", file=sys.stderr)
         except Exception as e:
             print(f"  Khmer font load error: {e}", file=sys.stderr)
@@ -128,7 +128,7 @@ def generate_card(word, illustration_path, output_path, fonts):
     day_text_w = bb_day[2] - bb_day[0]
     day_text_h = bb_day[3] - bb_day[1]
     day_x = day_badge_x + (day_badge_w - day_text_w) // 2
-    day_y = progress_y + (bar_h - day_text_h) // 2 - 2
+    day_y = progress_y + (bar_h - day_text_h) // 2 - bb_day[1]  # y offset 보정
     draw.text((day_x, day_y), day_text, font=fonts['kr_b20'], fill='white')
 
     # ── 일러스트 영역 ──
@@ -175,7 +175,7 @@ def generate_card(word, illustration_path, output_path, fonts):
     km_w = bb_km[2] - bb_km[0]
     km_h = bb_km[3] - bb_km[1]
     km_x = khmer_btn_x + (khmer_btn_w - km_w) // 2
-    km_y = khmer_btn_y + (khmer_btn_h - km_h) // 2 - 5  # 약간 위로 조정
+    km_y = khmer_btn_y + (khmer_btn_h - km_h) // 2 - bb_km[1]  # y offset 보정
     draw.text((km_x, km_y), meaning_khmer, font=fonts['km_b42'], fill='white')
 
     # ── EXAMPLE 섹션 ──
@@ -255,7 +255,7 @@ def generate_card(word, illustration_path, output_path, fonts):
     read_w = read_bb[2] - read_bb[0]
     read_h = read_bb[3] - read_bb[1]
     read_x = read_btn_x + (read_btn_w - read_w) // 2
-    read_y = read_btn_y + (read_btn_h - read_h) // 2 - 2
+    read_y = read_btn_y + (read_btn_h - read_h) // 2 - read_bb[1]  # y offset 보정
     draw.text((read_x, read_y), "READ", font=fonts['kr_b28'], fill='white')
 
     # ── 저장 ──
