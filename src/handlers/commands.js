@@ -13,14 +13,18 @@ async function handleStart(bot, msg) {
     .single();
 
   if (!existing) {
-    // 신규 학생 등록
+    // 신규 학생 등록 — start_date는 내일 (첫 카드는 내일 7AM에 발송)
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const startDate = tomorrow.toISOString().split('T')[0];
+
     await supabase.from('students').insert({
       id: chatId,
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       username: user.username || '',
       current_day: 1,
-      start_date: new Date().toISOString().split('T')[0],
+      start_date: startDate,
       is_active: true
     });
 

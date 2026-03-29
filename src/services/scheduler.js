@@ -2,19 +2,39 @@ const { supabase } = require('../config/supabase');
 const { sendWordCards } = require('../handlers/wordcard');
 const { startQuiz } = require('../handlers/quiz');
 
-// ── 아침 7시: 단어카드 전송 (학생별 current_day 기준) ──
+// ── start_date 기준 current_day 계산 헬퍼 ──
+function calcCurrentDay(startDate) {
+  const start = new Date(startDate + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(1, Math.min(diffDays, 35));
+}
+
+// ── 아침 7시: 단어카드 전송 (학생별 start_date 기준 Day 계산) ──
 async function sendMorningContent(bot) {
   const { data: students } = await supabase
     .from('students')
-    .select('id, first_name, current_day')
+    .select('id, first_name, start_date')
     .eq('is_active', true);
 
   if (!students || students.length === 0) return;
 
-  const dayOfWeek = new Date().getDay(); // 0=일, 6=토
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayOfWeek = today.getDay(); // 0=일, 6=토
 
   for (const student of students) {
     try {
+      // start_date가 아직 미래이면 스킵 (내일부터 시작)
+      const startD = new Date(student.start_date + 'T00:00:00');
+      if (startD > today) continue;
+
+      const currentDay = calcCurrentDay(student.start_date);
+
+      // DB의 current_day도 동기화
+      await supabase.from('students').update({ current_day: currentDay }).eq('id', student.id);
+
       if (dayOfWeek === 6) {
         // 토요일: 주간 복습 안내 (크메르어)
         await bot.sendMessage(student.id,
@@ -28,13 +48,13 @@ async function sendMorningContent(bot) {
         // 평일: 단어카드 전송 (크메르어)
         await bot.sendMessage(student.id,
           `🌅 អរុណសួស្តី ${student.first_name}!\n\n` +
-          `📅 ថ្ងៃទី ${student.current_day} / 35 🎯\n\n` +
+          `📅 ថ្ងៃទី ${currentDay} / 35 🎯\n\n` +
           `📚 ចាប់ផ្តើមរៀនពាក្យថ្ងៃនេះ!\n` +
           `(오늘의 단어카드를 시작합니다!)\n\n` +
           `💪 អ្នកអាចធ្វើបាន! ហ្វឹកហាត់ខ្លាំងៗ!`
         );
         // 단어카드 전송
-        await sendWordCards(bot, student.id, student.current_day);
+        await sendWordCards(bot, student.id, currentDay);
       }
 
       // 활동 기록
@@ -65,17 +85,25 @@ async function sendMorningContent(bot) {
 async function sendVideoLinks(bot) {
   const { data: students } = await supabase
     .from('students')
-    .select('id, first_name, current_day')
+    .select('id, first_name, start_date')
     .eq('is_active', true);
 
   if (!students || students.length === 0) return;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   for (const student of students) {
     try {
+      const startD = new Date(student.start_date + 'T00:00:00');
+      if (startD > today) continue;
+
+      const currentDay = calcCurrentDay(student.start_date);
+
       const { data: videos } = await supabase
         .from('videos')
         .select('*')
-        .eq('day_number', student.current_day)
+        .eq('day_number', currentDay)
         .order('sort_order');
 
       if (!videos || videos.length === 0) continue;
@@ -103,20 +131,25 @@ async function sendVideoLinks(bot) {
   console.log(`🎬 Video links sent to ${students.length} students`);
 }
 
-// ── 저녁 7시: 퀴즈 전송 + 진도 업데이트 ──
+// ── 저녁 7시: 퀴즈 전송 (current_day는 start_date 기준 자동 계산) ──
 async function sendEveningQuiz(bot) {
   const { data: students } = await supabase
     .from('students')
-    .select('id, first_name, current_day')
+    .select('id, first_name, start_date')
     .eq('is_active', true);
 
   if (!students || students.length === 0) return;
 
-  const dayOfWeek = new Date().getDay();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayOfWeek = today.getDay();
   const isWeekend = dayOfWeek === 6; // 토요일
 
   for (const student of students) {
     try {
+      const startD = new Date(student.start_date + 'T00:00:00');
+      if (startD > today) continue;
+
       if (isWeekend) {
         // 토요일: 주간 종합 퀴즈 (크메르어)
         await bot.sendMessage(student.id,
@@ -147,14 +180,12 @@ async function sendEveningQuiz(bot) {
             }
           }
         );
-
-        // 진도 +1 (평일만, 최대 35일)
-        const newDay = Math.min(student.current_day + 1, 35);
-        await supabase.from('students').update({
-          current_day: newDay,
-          last_active: new Date().toISOString()
-        }).eq('id', student.id);
       }
+
+      // last_active 업데이트
+      await supabase.from('students').update({
+        last_active: new Date().toISOString()
+      }).eq('id', student.id);
     } catch (err) {
       console.error(`Quiz send failed for student ${student.id}:`, err.message);
     }
