@@ -131,7 +131,7 @@ async function sendVideoLinks(bot) {
   console.log(`🎬 Video links sent to ${students.length} students`);
 }
 
-// ── 저녁 7시: 퀴즈 전송 (current_day는 start_date 기준 자동 계산) ──
+// ── 저녁 7시: 퀴즈 자동 생성 & 전송 (start_date 기준) ──
 async function sendEveningQuiz(bot) {
   const { data: students } = await supabase
     .from('students')
@@ -144,48 +144,41 @@ async function sendEveningQuiz(bot) {
   today.setHours(0, 0, 0, 0);
   const dayOfWeek = today.getDay();
   const isWeekend = dayOfWeek === 6; // 토요일
+  const quizType = isWeekend ? 'weekly' : 'daily';
+  const qCount = isWeekend ? 30 : 15;
+
+  let sentCount = 0;
 
   for (const student of students) {
     try {
       const startD = new Date(student.start_date + 'T00:00:00');
       if (startD > today) continue;
 
-      if (isWeekend) {
-        // 토요일: 주간 종합 퀴즈 (크메르어)
-        await bot.sendMessage(student.id,
-          `📝 ដល់ពេលធ្វើតេស្តហើយ! 🎯\n\n` +
-          `📚 ពាក្យ 30 + 🎧 ស្តាប់ 10\n` +
-          `(단어 30문제 + 듣기 10문제)\n\n` +
-          `ចុចប៊ូតុងខាងក្រោមដើម្បីចាប់ផ្តើម!`,
-          {
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '📝 ចាប់ផ្តើម! (시작)', callback_data: 'quiz_start_weekly' }
-              ]]
-            }
+      // 안내 메시지 + 시작 버튼
+      await bot.sendMessage(student.id,
+        `📝 ដល់ពេលធ្វើតេស្តហើយ! 🎯\n\n` +
+        (isWeekend
+          ? `📚 ពាក្យ ${qCount} សំណួរ (ពិនិត្យឡើងវិញប្រចាំសប្តាហ៍)\n` +
+            `(주간 복습 ${qCount}문제)\n\n`
+          : `📚 ពាក្យ 10 + 🔄 ពិនិត្យ 5 = ${qCount} សំណួរ\n` +
+            `(오늘 단어 10 + 복습 5 = ${qCount}문제)\n\n`) +
+        `ចុចប៊ូតុងខាងក្រោមដើម្បីចាប់ផ្តើម!`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '📝 ចាប់ផ្តើម! (시작)',
+                callback_data: isWeekend ? 'quiz_start_weekly' : 'quiz_start_daily' }
+            ]]
           }
-        );
-      } else {
-        // 평일: 일일 퀴즈 (크메르어)
-        await bot.sendMessage(student.id,
-          `📝 ដល់ពេលធ្វើតេស្តហើយ! 🎯\n\n` +
-          `📚 ពាក្យ 15 + 🎧 ស្តាប់ 5\n` +
-          `(단어 15문제 + 듣기 5문제)\n\n` +
-          `ចុចប៊ូតុងខាងក្រោមដើម្បីចាប់ផ្តើម!`,
-          {
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '📝 ចាប់ផ្តើម! (시작)', callback_data: 'quiz_start_daily' }
-              ]]
-            }
-          }
-        );
-      }
+        }
+      );
 
       // last_active 업데이트
       await supabase.from('students').update({
         last_active: new Date().toISOString()
       }).eq('id', student.id);
+
+      sentCount++;
     } catch (err) {
       console.error(`Quiz send failed for student ${student.id}:`, err.message);
     }
@@ -196,11 +189,12 @@ async function sendEveningQuiz(bot) {
     .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
   if (config?.value) {
     await bot.sendMessage(config.value,
-      `✅ Evening quiz sent to ${students.length} students.`
+      `✅ Evening ${quizType} quiz sent to ${sentCount} students.\n` +
+      `Format: ${isWeekend ? '30 weekly review' : '10 today + 5 review = 15'} questions`
     );
   }
 
-  console.log(`📝 Evening quiz sent to ${students.length} students`);
+  console.log(`📝 Evening ${quizType} quiz sent to ${sentCount} students`);
 }
 
 // ── 듣기 문제 전송 ──

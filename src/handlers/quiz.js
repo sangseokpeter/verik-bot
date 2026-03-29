@@ -1,20 +1,33 @@
 const { supabase } = require('../config/supabase');
 
-// ── 퀴즈 시작 ──
-async function startQuiz(bot, msg, quizType = 'daily') {
-  const chatId = msg.chat.id;
+// ── start_date 기준 current_day 계산 ──
+function calcCurrentDay(startDate) {
+  const start = new Date(startDate + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(1, Math.min(diffDays, 35));
+}
+
+// ── 퀴즈 시작 (chatId 직접 받기 — 스케줄러/콜백 양쪽에서 호출) ──
+async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
+  const chatId = typeof chatIdOrMsg === 'object' ? chatIdOrMsg.chat.id : chatIdOrMsg;
 
   const { data: student } = await supabase
     .from('students')
-    .select('current_day')
+    .select('current_day, start_date, first_name')
     .eq('id', chatId)
     .single();
 
   if (!student) {
-    return bot.sendMessage(chatId, '먼저 /start 로 등록해주세요!');
+    return bot.sendMessage(chatId,
+      `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
   }
 
-  const dayNumber = student.current_day;
+  // start_date 기반 current_day 계산
+  const dayNumber = student.start_date
+    ? calcCurrentDay(student.start_date)
+    : student.current_day;
   const isWeekly = quizType === 'weekly';
 
   // 전체 단어 풀 가져오기 (오답 보기용)
@@ -27,6 +40,7 @@ async function startQuiz(bot, msg, quizType = 'daily') {
   let questions = [];
 
   if (isWeekly) {
+    // 토요일: 이번 주 전체 단어 (최근 6일)
     const weekStart = Math.max(1, dayNumber - 5);
     const { data: weekWords } = await supabase
       .from('words')
@@ -34,9 +48,10 @@ async function startQuiz(bot, msg, quizType = 'daily') {
       .gte('day_number', weekStart)
       .lte('day_number', dayNumber)
       .order('id');
-    
+
     questions = generateQuestions(weekWords, 30, allWords);
   } else {
+    // 평일: 오늘 단어 10 + 틀린 단어 복습 5
     const { data: wrongWords } = await supabase
       .from('wrong_word_tracker')
       .select('word_id, words(*)')
@@ -55,12 +70,13 @@ async function startQuiz(bot, msg, quizType = 'daily') {
 
     const todayQ = generateQuestions(todayWords || [], 10, allWords);
     const reviewQ = generateQuestions(reviewWords, 5, allWords);
-    
+
     questions = [...reviewQ, ...todayQ];
   }
 
   if (questions.length === 0) {
-    return bot.sendMessage(chatId, '오늘 퀴즈 문제가 없습니다.');
+    return bot.sendMessage(chatId,
+      `📝 មិនមានសំណួរថ្ងៃនេះទេ។\n(오늘 퀴즈 문제가 없습니다.)`);
   }
 
   // 세션 생성
@@ -155,7 +171,17 @@ async function sendQuizQuestion(bot, chatId, sessionId, questions, index) {
 async function handleQuizCallback(bot, query) {
   const chatId = query.message.chat.id;
   const data = query.data;
-  
+
+  // quiz_start_daily / quiz_start_weekly → 퀴즈 자동 생성 시작
+  if (data === 'quiz_start_daily') {
+    await bot.answerCallbackQuery(query.id);
+    return startQuiz(bot, chatId, 'daily');
+  }
+  if (data === 'quiz_start_weekly') {
+    await bot.answerCallbackQuery(query.id);
+    return startQuiz(bot, chatId, 'weekly');
+  }
+
   // quiz_sessionId_questionIndex_selectedIndex_correctIndex_wordId
   const parts = data.split('_');
   const sessionId = parseInt(parts[1]);
@@ -252,18 +278,21 @@ async function handleQuizCallback(bot, query) {
     await supabase.from('admin_config').delete().eq('key', `quiz_data_${sessionId}`);
 
     let emoji = pct >= 90 ? '🏆' : pct >= 70 ? '👏' : pct >= 50 ? '💪' : '📚';
-    let message = pct >= 90 ? '완벽해요! / អស្ចារ្យ!' :
-                  pct >= 70 ? '잘했어요! / ល្អណាស់!' :
-                  pct >= 50 ? '괜찮아요! / មិនអីទេ!' :
-                  '더 열심히! / ខិតខំបន្ថែម!';
+    let khmerMsg = pct >= 90 ? 'អស្ចារ្យ!' :
+                   pct >= 70 ? 'ល្អណាស់!' :
+                   pct >= 50 ? 'មិនអីទេ!' :
+                   'ខិតខំបន្ថែម!';
 
     await bot.sendMessage(chatId, feedback);
     await bot.sendMessage(chatId,
-      `${emoji} 퀴즈 완료!\n\n` +
-      `📊 결과: ${totalCorrect}/${totalQ} (${pct}%)\n` +
-      `${message}\n\n` +
-      `${pct < 70 ? '틀린 단어는 내일 복습 퀴즈에 나옵니다! / ពាក្យខុសនឹងចេញម្តងទៀតថ្ងៃស្អែក!' : ''}`
+      `${emoji} តេស្តរួចរាល់!\n\n` +
+      `📊 លទ្ធផល: ${totalCorrect}/${totalQ} (${pct}%)\n` +
+      `${khmerMsg}\n\n` +
+      `${pct < 70 ? '🔄 ពាក្យខុសនឹងចេញម្តងទៀតថ្ងៃស្អែក!' : ''}`
     );
+
+    // Admin에게 학생별 결과 요약 전송
+    await sendQuizResultToAdmin(bot, chatId, session, totalCorrect, totalQ, pct);
   }
 
   await bot.answerCallbackQuery(query.id);
@@ -303,6 +332,36 @@ async function updateWrongTracker(studentId, wordId, isCorrect) {
         consecutive_correct: 0
       });
     }
+  }
+}
+
+// ── Admin에게 퀴즈 결과 요약 전송 ──
+async function sendQuizResultToAdmin(bot, studentId, session, correct, total, pct) {
+  try {
+    const { data: student } = await supabase
+      .from('students')
+      .select('first_name, username')
+      .eq('id', studentId)
+      .single();
+
+    const { data: config } = await supabase
+      .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+
+    if (!config?.value) return;
+
+    const emoji = pct >= 90 ? '🏆' : pct >= 70 ? '👏' : pct >= 50 ? '💪' : '⚠️';
+    const name = student?.first_name || 'Unknown';
+    const handle = student?.username ? ` (@${student.username})` : '';
+    const type = session?.quiz_type === 'weekly' ? 'Weekly' : 'Daily';
+
+    await bot.sendMessage(config.value,
+      `${emoji} Quiz Result\n` +
+      `Student: ${name}${handle}\n` +
+      `Type: ${type} | Day ${session?.day_number || '?'}\n` +
+      `Score: ${correct}/${total} (${pct}%)`
+    );
+  } catch (err) {
+    console.error('Admin quiz result notify failed:', err.message);
   }
 }
 
