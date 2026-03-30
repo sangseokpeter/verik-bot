@@ -243,9 +243,11 @@ async function handleQuizCallback(bot, query) {
   const questions = configData ? JSON.parse(configData.value) : [];
   const nextIndex = qIndex + 1;
 
+  // 콜백 응답 (한 번만 호출)
+  await bot.answerCallbackQuery(query.id);
+
   if (nextIndex < questions.length) {
     // 피드백 + 다음 문제
-    await bot.answerCallbackQuery(query.id, { text: feedback, show_alert: false });
     await bot.sendMessage(chatId, feedback);
     await sendQuizQuestion(bot, chatId, sessionId, questions, nextIndex);
   } else {
@@ -294,8 +296,6 @@ async function handleQuizCallback(bot, query) {
     // Admin에게 학생별 결과 요약 전송
     await sendQuizResultToAdmin(bot, chatId, session, totalCorrect, totalQ, pct);
   }
-
-  await bot.answerCallbackQuery(query.id);
 }
 
 // ── 틀린 단어 추적 업데이트 ──
