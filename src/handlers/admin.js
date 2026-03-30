@@ -43,6 +43,7 @@ async function handleAdminCommand(bot, msg) {
     `🔊 TTS ready: ${ttsReady} / 1025\n\n` +
     `Commands:\n` +
     `/broadcast [msg] - Send to all students\n` +
+    `/reply [id] [msg] - Reply to a student\n` +
     `/generate_cards [day] - Generate card images\n` +
     `/generate_tts [day] - Generate TTS audio\n` +
     `/generate_all - Auto-generate Day 1~35 (cards + TTS)\n` +
@@ -212,6 +213,77 @@ Always respond in English. Be concise.`,
   }
 }
 
+// ── 학생 → Admin 메시지 전달 ──
+async function handleStudentMessage(bot, msg) {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+
+  const { data: student } = await supabase
+    .from('students')
+    .select('first_name, username, current_day')
+    .eq('id', chatId)
+    .single();
+
+  if (!student) return;
+
+  // Admin에게 전달
+  const { data: config } = await supabase
+    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+
+  if (!config?.value) return;
+
+  const name = student.first_name || 'Unknown';
+  const handle = student.username ? ` (@${student.username})` : '';
+
+  await bot.sendMessage(config.value,
+    `💬 Student Message\n` +
+    `From: ${name}${handle}\n` +
+    `ID: ${chatId}\n` +
+    `Day: ${student.current_day}/35\n\n` +
+    `"${text}"\n\n` +
+    `Reply: /reply ${chatId} [message]`
+  );
+
+  // 학생에게 수신 확인 (크메르어)
+  await bot.sendMessage(chatId,
+    `✅ សារអ្នកត្រូវបានផ្ញើទៅគ្រូរួចហើយ!\n` +
+    `សូមរង់ចាំការឆ្លើយតប។`
+  );
+}
+
+// ── Admin → 학생 개별 답장 ──
+async function handleReply(bot, msg, studentId, message) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const id = parseInt(studentId);
+
+  const { data: student } = await supabase
+    .from('students')
+    .select('first_name')
+    .eq('id', id)
+    .single();
+
+  if (!student) {
+    return bot.sendMessage(msg.chat.id, `⚠️ Student not found: ${id}`);
+  }
+
+  try {
+    await bot.sendMessage(id,
+      `📩 សារពីគ្រូ:\n\n${message}`
+    );
+
+    await bot.sendMessage(msg.chat.id,
+      `✅ Reply sent to ${student.first_name} (${id})`
+    );
+  } catch (err) {
+    await bot.sendMessage(msg.chat.id,
+      `❌ Failed to send: ${err.message}`
+    );
+  }
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -219,6 +291,8 @@ module.exports = {
   handleGenerateTTS,
   handleGenerateAll,
   handleAdminMessage,
+  handleStudentMessage,
+  handleReply,
   isAdmin,
   ADMIN_IDS
 };
