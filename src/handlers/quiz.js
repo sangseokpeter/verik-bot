@@ -49,9 +49,15 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
       .lte('day_number', dayNumber)
       .order('id');
 
-    questions = generateQuestions(weekWords, 30, allWords);
+    const wordQ = generateQuestions(weekWords, 20, allWords, 'word');
+    const listeningPool = (weekWords || []).filter(w => w.audio_url);
+    const listeningQ = generateQuestions(
+      listeningPool.length > 0 ? listeningPool : (weekWords || []),
+      10, allWords, 'listening'
+    );
+    questions = [...wordQ, ...listeningQ];
   } else {
-    // 평일: 오늘 단어 10 + 틀린 단어 복습 5
+    // 평일: 복습 5 + 오늘 단어 10 + 듣기 5
     const { data: wrongWords } = await supabase
       .from('wrong_word_tracker')
       .select('word_id, words(*)')
@@ -68,10 +74,14 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
       .eq('day_number', dayNumber)
       .order('id');
 
-    const todayQ = generateQuestions(todayWords || [], 10, allWords);
-    const reviewQ = generateQuestions(reviewWords, 5, allWords);
-
-    questions = [...reviewQ, ...todayQ];
+    const reviewQ = generateQuestions(reviewWords, 5, allWords, 'word');
+    const todayQ = generateQuestions(todayWords || [], 10, allWords, 'word');
+    const listeningPool = (todayWords || []).filter(w => w.audio_url);
+    const listeningQ = generateQuestions(
+      listeningPool.length > 0 ? listeningPool : (todayWords || []),
+      5, allWords, 'listening'
+    );
+    questions = [...reviewQ, ...todayQ, ...listeningQ];
   }
 
   if (questions.length === 0) {
@@ -96,18 +106,18 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
 }
 
 // ── 문제 생성 (4지선다) — 중복 없는 오답 보기 ──
-function generateQuestions(words, count, allWords) {
+function generateQuestions(words, count, allWords, type = 'word') {
   if (!words || words.length === 0) return [];
-  
+
   const pool = allWords && allWords.length > 3 ? allWords : words;
   const shuffled = [...words].sort(() => Math.random() - 0.5);
   const selected = shuffled.slice(0, Math.min(count, shuffled.length));
-  
+
   return selected.map(word => {
     // 오답 3개: 정답과 다른 뜻 + 서로 겹치지 않는 것만
     const usedMeanings = new Set([word.meaning_khmer]);
     const wrongOptions = [];
-    
+
     const candidates = pool
       .filter(w => w.id !== word.id && w.meaning_khmer && w.meaning_khmer !== word.meaning_khmer)
       .sort(() => Math.random() - 0.5);
@@ -130,9 +140,11 @@ function generateQuestions(words, count, allWords) {
     const correctIndex = options.indexOf(word.meaning_khmer);
 
     return {
+      type: type,
       word_id: word.id,
       korean: word.korean,
       pronunciation: word.pronunciation,
+      audio_url: word.audio_url || null,
       correct_answer: word.meaning_khmer,
       options: options,
       correct_index: correctIndex
@@ -145,10 +157,31 @@ async function sendQuizQuestion(bot, chatId, sessionId, questions, index) {
   const q = questions[index];
   const labels = ['A', 'B', 'C', 'D'];
 
-  const text =
-    `📝 문제 ${index + 1}/${questions.length}\n\n` +
-    `🇰🇷 "${q.korean}" ${q.pronunciation}\n\n` +
-    `이 단어의 뜻은? / តើពាក្យនេះមានន័យថាអ្វី?`;
+  // 단어 → 듣기 전환 메시지
+  if (index > 0 && questions[index].type === 'listening' && questions[index - 1].type === 'word') {
+    await bot.sendMessage(chatId,
+      `🎉 ពាក្យរួចហើយ! មកដល់ផ្នែកស្តាប់!\n` +
+      `(단어퀴즈 완료! 이제 듣기 퀴즈!)\n\n` +
+      `🎧 សូមស្តាប់សំឡេង ហើយជ្រើសន័យត្រឹមត្រូវ!\n` +
+      `(음성을 듣고 크메르어 뜻을 고르세요!)`
+    );
+  }
+
+  // 듣기 문제: 음성 먼저 전송
+  let text;
+  if (q.type === 'listening') {
+    if (q.audio_url) {
+      await bot.sendVoice(chatId, q.audio_url);
+    }
+    text =
+      `🎧 ${index + 1}/${questions.length}\n\n` +
+      `តើពាក្យនេះមានន័យថាអ្វី?\n(들은 단어의 뜻은?)`;
+  } else {
+    text =
+      `📝 ${index + 1}/${questions.length}\n\n` +
+      `🇰🇷 "${q.korean}" ${q.pronunciation}\n\n` +
+      `이 단어의 뜻은? / តើពាក្យនេះមានន័យថាអ្វី?`;
+  }
 
   const keyboard = {
     inline_keyboard: q.options.map((opt, i) => [{
