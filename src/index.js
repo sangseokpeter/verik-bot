@@ -3,7 +3,7 @@ const cron = require('node-cron');
 const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
-const { handleWordCardCallback } = require('./handlers/wordcard');
+const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
 const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
@@ -43,6 +43,8 @@ bot.on('callback_query', async (query) => {
     await handleQuizCallback(bot, query);
   } else if (data.startsWith('listen_')) {
     await handleListeningCallback(bot, query);
+  } else if (data.startsWith('tts_')) {
+    await handleTTSCallback(bot, query);
   } else if (data.startsWith('card_')) {
     await handleWordCardCallback(bot, query);
   }

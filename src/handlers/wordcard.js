@@ -51,6 +51,9 @@ async function sendWordCard(bot, chatId, day, index) {
       });
     }
 
+    // TTS 버튼 (항상 표시)
+    buttons.push({ text: '🔊', callback_data: `tts_${word.id}` });
+
     // 다음 버튼 (마지막 카드가 아닐 때만)
     if (index < total - 1) {
       buttons.push({
@@ -115,7 +118,30 @@ async function handleWordCardCallback(bot, query) {
   }
 }
 
-module.exports = {
-  handleWordCardCallback,
-  sendWordCard
-};
+async function sendWordCards(bot, chatId, day) {
+  await sendWordCard(bot, chatId, day, 0);
+}
+
+async function handleTTSCallback(bot, query) {
+  try {
+    const chatId = query.message.chat.id;
+    const wordId = parseInt(query.data.split('_')[1]);
+    const { data: word } = await supabase
+      .from('words')
+      .select('korean, audio_url')
+      .eq('id', wordId)
+      .single();
+    if (word?.audio_url) {
+      await bot.sendAudio(chatId, word.audio_url, { title: word.korean });
+    } else {
+      await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
+      return;
+    }
+    await bot.answerCallbackQuery(query.id);
+  } catch (err) {
+    console.error('TTS callback error:', err);
+    await bot.answerCallbackQuery(query.id, { text: '오류가 발생했습니다.' });
+  }
+}
+
+module.exports = { handleWordCardCallback, sendWordCard, sendWordCards, handleTTSCallback };
