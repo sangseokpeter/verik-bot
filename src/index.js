@@ -4,7 +4,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, handleStudentMessage, handleReply, isAdmin } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, handleStudentAsk, handleReply, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -26,18 +26,19 @@ bot.onText(/\/generate_tts (\d+)/, (msg, match) => handleGenerateTTS(bot, msg, m
 bot.onText(/\/generate_all/, (msg) => handleGenerateAll(bot, msg));
 bot.onText(/\/reply (\d+) (.+)/, (msg, match) => handleReply(bot, msg, match[1], match[2]));
 
+// ── 학생 문의 ──
+bot.onText(/\/ask (.+)/, (msg, match) => handleStudentAsk(bot, msg, match[1]));
+
 // 테스트용
 bot.onText(/\/start_day (\d+)/, (msg, match) => handleStartDay(bot, msg, match[1]));
 bot.onText(/\/test_card (\d+)/, (msg, match) => handleTestCard(bot, msg, match[1]));
 
-// ── 일반 텍스트 메시지 처리 ──
+// ── Admin 자연어 메시지 → Claude API ──
 bot.on('message', (msg) => {
   if (!msg.text || msg.text.startsWith('/')) return;
 
   if (isAdmin(msg.from.id)) {
     handleAdminMessage(bot, msg);
-  } else {
-    handleStudentMessage(bot, msg);
   }
 });
 

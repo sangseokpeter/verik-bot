@@ -43,7 +43,7 @@ async function handleAdminCommand(bot, msg) {
     `🔊 TTS ready: ${ttsReady} / 1025\n\n` +
     `Commands:\n` +
     `/broadcast [msg] - Send to all students\n` +
-    `/reply [id] [msg] - Reply to a student\n` +
+    `/reply [id] [msg] - Reply to a student (student sees Khmer header)\n` +
     `/generate_cards [day] - Generate card images\n` +
     `/generate_tts [day] - Generate TTS audio\n` +
     `/generate_all - Auto-generate Day 1~35 (cards + TTS)\n` +
@@ -213,10 +213,9 @@ Always respond in English. Be concise.`,
   }
 }
 
-// ── 학생 → Admin 메시지 전달 ──
-async function handleStudentMessage(bot, msg) {
+// ── /ask — 학생 → Admin 문의 전달 ──
+async function handleStudentAsk(bot, msg, question) {
   const chatId = msg.chat.id;
-  const text = msg.text;
 
   const { data: student } = await supabase
     .from('students')
@@ -224,9 +223,12 @@ async function handleStudentMessage(bot, msg) {
     .eq('id', chatId)
     .single();
 
-  if (!student) return;
+  if (!student) {
+    return bot.sendMessage(chatId,
+      `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
+  }
 
-  // Admin에게 전달
+  // Admin에게 영어로 전달
   const { data: config } = await supabase
     .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
 
@@ -236,22 +238,22 @@ async function handleStudentMessage(bot, msg) {
   const handle = student.username ? ` (@${student.username})` : '';
 
   await bot.sendMessage(config.value,
-    `💬 Student Message\n` +
+    `💬 Student Question\n` +
     `From: ${name}${handle}\n` +
     `ID: ${chatId}\n` +
     `Day: ${student.current_day}/35\n\n` +
-    `"${text}"\n\n` +
+    `"${question}"\n\n` +
     `Reply: /reply ${chatId} [message]`
   );
 
-  // 학생에게 수신 확인 (크메르어)
+  // 학생에게 크메르어로 수신 확인
   await bot.sendMessage(chatId,
-    `✅ សារអ្នកត្រូវបានផ្ញើទៅគ្រូរួចហើយ!\n` +
+    `✅ សំណួររបស់អ្នកត្រូវបានផ្ញើទៅគ្រូរួចហើយ!\n` +
     `សូមរង់ចាំការឆ្លើយតប។`
   );
 }
 
-// ── Admin → 학생 개별 답장 ──
+// ── /reply — Admin → 학생 개별 답장 ──
 async function handleReply(bot, msg, studentId, message) {
   if (!isAdmin(msg.from.id)) {
     return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
@@ -270,10 +272,12 @@ async function handleReply(bot, msg, studentId, message) {
   }
 
   try {
+    // 학생에게 크메르어로 답장
     await bot.sendMessage(id,
-      `📩 សារពីគ្រូ:\n\n${message}`
+      `📩 ការឆ្លើយតបពីគ្រូ:\n\n${message}`
     );
 
+    // Admin에게 영어로 확인
     await bot.sendMessage(msg.chat.id,
       `✅ Reply sent to ${student.first_name} (${id})`
     );
@@ -291,7 +295,7 @@ module.exports = {
   handleGenerateTTS,
   handleGenerateAll,
   handleAdminMessage,
-  handleStudentMessage,
+  handleStudentAsk,
   handleReply,
   isAdmin,
   ADMIN_IDS
