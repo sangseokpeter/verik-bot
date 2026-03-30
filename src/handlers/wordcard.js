@@ -132,7 +132,7 @@ async function handleTTSCallback(bot, query) {
       .eq('id', wordId)
       .single();
     if (word?.audio_url) {
-      await bot.sendAudio(chatId, word.audio_url, { title: word.korean });
+      await bot.sendVoice(chatId, word.audio_url);
     } else {
       await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
       return;
