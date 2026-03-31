@@ -51,8 +51,10 @@ async function sendWordCard(bot, chatId, day, index) {
       });
     }
 
-    // TTS 버튼 (항상 표시)
-    buttons.push({ text: '🔊', callback_data: `tts_${word.id}` });
+    // TTS 버튼 (audio_url이 있을 때만, URL 직접 링크로 연쇄 재생 방지)
+    if (word.audio_url) {
+      buttons.push({ text: '🔊', url: word.audio_url });
+    }
 
     // 다음 버튼 (마지막 카드가 아닐 때만)
     if (index < total - 1) {
