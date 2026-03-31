@@ -133,20 +133,21 @@ async function handleTTSCallback(bot, query) {
     const wordId = parseInt(query.data.split('_')[1]);
     const { data: word } = await supabase
       .from('words')
-      .select('korean, audio_url')
+      .select('korean, pronunciation, audio_url')
       .eq('id', wordId)
       .single();
     if (word?.audio_url) {
-      // 이전 TTS 메시지 삭제 (중복 방지)
+      // 이전 TTS 메시지 삭제 (1개만 유지)
       const prevMsgId = lastTTSMessage.get(chatId);
       if (prevMsgId) {
         try { await bot.deleteMessage(chatId, prevMsgId); } catch (e) {}
       }
-      // sendAudio 사용 (sendVoice는 텔레그램에서 연쇄 자동 재생됨)
-      const sent = await bot.sendAudio(chatId, word.audio_url, {
-        title: word.korean,
-        performer: 'VERI-K'
-      });
+      // 발음 + 재생 링크를 텍스트 메시지로 전송 (오디오 파일 X → 연쇄 재생 불가)
+      const sent = await bot.sendMessage(chatId,
+        `🔊 ${word.korean} ${word.pronunciation || ''}\n\n` +
+        `▶️ [음성 듣기](${word.audio_url})`,
+        { parse_mode: 'Markdown', disable_web_page_preview: false }
+      );
       lastTTSMessage.set(chatId, sent.message_id);
     } else {
       await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
