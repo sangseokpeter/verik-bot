@@ -4,7 +4,9 @@ const { startQuiz } = require('../handlers/quiz');
 
 // ── start_date 기준 current_day 계산 헬퍼 ──
 function calcCurrentDay(startDate) {
+  if (!startDate) return 1;
   const start = new Date(startDate + 'T00:00:00');
+  if (isNaN(start.getTime())) return 1;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
@@ -26,6 +28,12 @@ async function sendMorningContent(bot) {
 
   for (const student of students) {
     try {
+      // start_date가 null이면 등록 안내 후 스킵
+      if (!student.start_date) {
+        await bot.sendMessage(student.id, `❌ /start 를 먼저 눌러 등록해주세요!`);
+        continue;
+      }
+
       // start_date가 아직 미래이면 스킵 (내일부터 시작)
       const startD = new Date(student.start_date + 'T00:00:00');
       if (startD > today) continue;

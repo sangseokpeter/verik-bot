@@ -2,7 +2,9 @@ const { supabase } = require('../config/supabase');
 
 // ── start_date 기준 current_day 계산 ──
 function calcCurrentDay(startDate) {
+  if (!startDate) return 1;
   const start = new Date(startDate + 'T00:00:00');
+  if (isNaN(start.getTime())) return 1;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
@@ -187,10 +189,15 @@ async function sendQuizQuestion(bot, chatId, sessionId, questions, index) {
   if (q.type === 'listening') {
     if (q.audio_url) {
       await bot.sendVoice(chatId, q.audio_url);
+      text =
+        `🎧 ${index + 1}/${questions.length}\n\n` +
+        `តើពាក្យនេះមានន័យថាអ្វី?\n(들은 단어의 뜻은?)`;
+    } else {
+      text =
+        `🎧 ${index + 1}/${questions.length}\n\n` +
+        `🇰🇷 "${q.korean}" ${q.pronunciation || ''}\n\n` +
+        `(음성 없음) 이 단어의 크메르어 뜻은?\nតើពាក្យនេះមានន័យថាអ្វី?`;
     }
-    text =
-      `🎧 ${index + 1}/${questions.length}\n\n` +
-      `តើពាក្យនេះមានន័យថាអ្វី?\n(들은 단어의 뜻은?)`;
   } else {
     text =
       `📝 ${index + 1}/${questions.length}\n\n` +

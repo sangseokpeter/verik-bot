@@ -8,6 +8,16 @@ function isAdmin(userId) {
   return ADMIN_IDS.includes(userId);
 }
 
+function calcCurrentDay(startDate) {
+  if (!startDate) return 1;
+  const start = new Date(startDate + 'T00:00:00');
+  if (isNaN(start.getTime())) return 1;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(1, Math.min(diffDays, 35));
+}
+
 // ── /admin 대시보드 ──
 async function handleAdminCommand(bot, msg) {
   if (!isAdmin(msg.from.id)) {
@@ -215,41 +225,41 @@ Always respond in English. Be concise.`,
 
 // ── /ask — 학생 → Admin 문의 전달 ──
 async function handleStudentAsk(bot, msg, question) {
-  const chatId = msg.chat.id;
+  const studentId = msg.from.id;
+  const firstName = msg.from.first_name || 'Unknown';
+  const username = msg.from.username ? `@${msg.from.username}` : '(no username)';
 
-  const { data: student } = await supabase
-    .from('students')
-    .select('first_name, username, current_day')
-    .eq('id', chatId)
-    .single();
+  // 학생에게 확인 메시지
+  await bot.sendMessage(studentId,
+    `✅ សំណួររបស់អ្នកបានផ្ញើហើយ!\n(질문이 전달되었습니다. 곧 답변드릴게요!)\n\n❓ "${question}"`
+  );
 
-  if (!student) {
-    return bot.sendMessage(chatId,
-      `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
-  }
-
-  // Admin에게 영어로 전달
+  // Admin에게 학생 정보 + 질문 전송
   const { data: config } = await supabase
     .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
 
   if (!config?.value) return;
 
-  const name = student.first_name || 'Unknown';
-  const handle = student.username ? ` (@${student.username})` : '';
+  // DB에서 학생 추가 정보 조회
+  const { data: student } = await supabase
+    .from('students')
+    .select('first_name, username, start_date, current_day')
+    .eq('id', studentId)
+    .single();
+
+  const currentDay = student?.start_date ? calcCurrentDay(student.start_date) : '?';
+  const name = student?.first_name || firstName;
+  const handle = student?.username ? ` (@${student.username})` : ` (${username})`;
 
   await bot.sendMessage(config.value,
-    `💬 Student Question\n` +
-    `From: ${name}${handle}\n` +
-    `ID: ${chatId}\n` +
-    `Day: ${student.current_day}/35\n\n` +
-    `"${question}"\n\n` +
-    `Reply: /reply ${chatId} [message]`
-  );
-
-  // 학생에게 크메르어로 수신 확인
-  await bot.sendMessage(chatId,
-    `✅ សំណួររបស់អ្នកត្រូវបានផ្ញើទៅគ្រូរួចហើយ!\n` +
-    `សូមរង់ចាំការឆ្លើយតប។`
+    `❓ Student Question\n` +
+    `──────────────────\n` +
+    `👤 ${name}${handle}\n` +
+    `🆔 ID: ${studentId}\n` +
+    `📅 Day: ${currentDay}/35\n` +
+    `──────────────────\n` +
+    `💬 "${question}"\n\n` +
+    `↩️ 답장: /reply ${studentId} [내용]`
   );
 }
 

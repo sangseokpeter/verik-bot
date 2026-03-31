@@ -51,9 +51,9 @@ async function sendWordCard(bot, chatId, day, index) {
       });
     }
 
-    // TTS 버튼 (audio_url이 있을 때만, URL 직접 링크로 연쇄 재생 방지)
+    // TTS 버튼 (audio_url이 있을 때만)
     if (word.audio_url) {
-      buttons.push({ text: '🔊', url: word.audio_url });
+      buttons.push({ text: '🔊', callback_data: `tts_${word.id}` });
     }
 
     // 다음 버튼 (마지막 카드가 아닐 때만)
@@ -134,7 +134,7 @@ async function handleTTSCallback(bot, query) {
       .eq('id', wordId)
       .single();
     if (word?.audio_url) {
-      await bot.sendAudio(chatId, word.audio_url, { title: `🔊 ${word.korean}` });
+      await bot.sendVoice(chatId, word.audio_url);
     } else {
       await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
       return;

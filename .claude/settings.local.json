@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node -e \":*)",
+      "Bash(npm install:*)",
+      "Bash(clip)",
+      "Bash(python:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"C:\\\\Users\\\\Mr.Peter\\\\Downloads\\\\verik_images\\\\generate_example_tts.py\")"
+    ]
+  }
+}
