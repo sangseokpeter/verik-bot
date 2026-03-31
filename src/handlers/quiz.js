@@ -50,7 +50,7 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
       .order('id');
 
     const wordQ = generateQuestions(weekWords, 20, allWords, 'word');
-    const listeningPool = (weekWords || []).filter(w => w.audio_url);
+    const listeningPool = (weekWords || []).filter(w => w.example_audio_url || w.audio_url);
     const listeningQ = generateQuestions(
       listeningPool.length > 0 ? listeningPool : (weekWords || []),
       10, allWords, 'listening'
@@ -76,7 +76,7 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
 
     const reviewQ = generateQuestions(reviewWords, 5, allWords, 'word');
     const todayQ = generateQuestions(todayWords || [], 10, allWords, 'word');
-    const listeningPool = (todayWords || []).filter(w => w.audio_url);
+    const listeningPool = (todayWords || []).filter(w => w.example_audio_url || w.audio_url);
     const listeningQ = generateQuestions(
       listeningPool.length > 0 ? listeningPool : (todayWords || []),
       5, allWords, 'listening'
@@ -88,6 +88,19 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
     return bot.sendMessage(chatId,
       `📝 មិនមានសំណួរថ្ងៃនេះទេ។\n(오늘 퀴즈 문제가 없습니다.)`);
   }
+
+  // 문제 구성 안내
+  const wordCount = questions.filter(q => q.type === 'word').length;
+  const listenCount = questions.filter(q => q.type === 'listening').length;
+  const hasAudio = questions.filter(q => q.type === 'listening' && q.audio_url).length;
+  await bot.sendMessage(chatId,
+    `📋 តេស្តថ្ងៃនេះ: ${questions.length} សំណួរ\n` +
+    `📝 ពាក្យ: ${wordCount} | 🎧 ស្តាប់: ${listenCount}\n` +
+    (listenCount > 0 && hasAudio === 0
+      ? `⚠️ សំឡេងមិនទាន់មាន - តេស្តជាអក្សរ\n(음성 미준비 - 텍스트로 출제)\n\n`
+      : `\n`) +
+    `💪 ចាប់ផ្តើម!`
+  );
 
   // 세션 생성
   const { data: session } = await supabase
@@ -144,7 +157,9 @@ function generateQuestions(words, count, allWords, type = 'word') {
       word_id: word.id,
       korean: word.korean,
       pronunciation: word.pronunciation,
-      audio_url: word.audio_url || null,
+      audio_url: type === 'listening'
+        ? (word.example_audio_url || word.audio_url || null)
+        : (word.audio_url || null),
       correct_answer: word.meaning_khmer,
       options: options,
       correct_index: correctIndex
