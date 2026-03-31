@@ -137,13 +137,16 @@ async function handleTTSCallback(bot, query) {
       .eq('id', wordId)
       .single();
     if (word?.audio_url) {
-      // 이전 TTS 메시지 삭제 (연쇄 재생 방지)
+      // 이전 TTS 메시지 삭제 (중복 방지)
       const prevMsgId = lastTTSMessage.get(chatId);
       if (prevMsgId) {
         try { await bot.deleteMessage(chatId, prevMsgId); } catch (e) {}
       }
-      // 새 음성 전송 후 메시지 ID 저장
-      const sent = await bot.sendVoice(chatId, word.audio_url);
+      // sendAudio 사용 (sendVoice는 텔레그램에서 연쇄 자동 재생됨)
+      const sent = await bot.sendAudio(chatId, word.audio_url, {
+        title: word.korean,
+        performer: 'VERI-K'
+      });
       lastTTSMessage.set(chatId, sent.message_id);
     } else {
       await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
