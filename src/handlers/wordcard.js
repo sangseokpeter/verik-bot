@@ -3,6 +3,9 @@
 // ============================================
 const { supabase } = require('../config/supabase');
 
+// 채팅별 마지막 TTS 메시지 ID (연쇄 재생 방지용)
+const lastTTSMessage = new Map();
+
 /**
  * 단어 카드 전송 (Next/이전 버튼 포함)
  */
@@ -134,7 +137,14 @@ async function handleTTSCallback(bot, query) {
       .eq('id', wordId)
       .single();
     if (word?.audio_url) {
-      await bot.sendVoice(chatId, word.audio_url);
+      // 이전 TTS 메시지 삭제 (연쇄 재생 방지)
+      const prevMsgId = lastTTSMessage.get(chatId);
+      if (prevMsgId) {
+        try { await bot.deleteMessage(chatId, prevMsgId); } catch (e) {}
+      }
+      // 새 음성 전송 후 메시지 ID 저장
+      const sent = await bot.sendVoice(chatId, word.audio_url);
+      lastTTSMessage.set(chatId, sent.message_id);
     } else {
       await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
       return;
