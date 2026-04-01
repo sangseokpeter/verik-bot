@@ -53,15 +53,12 @@ async function sendMorningContent(bot) {
           `(저녁 7시에 종합 퀴즈 30문제 + 듣기 10문제)`
         );
       } else {
-        // 평일: 단어카드 전송 (크메르어)
+        // 평일: 인사 + 단어카드만 전송
         await bot.sendMessage(student.id,
-          `🌅 អរុណសួស្តី ${student.first_name}!\n\n` +
-          `📅 ថ្ងៃទី ${currentDay} / 35 🎯\n\n` +
-          `📚 ចាប់ផ្តើមរៀនពាក្យថ្ងៃនេះ!\n` +
-          `(오늘의 단어카드를 시작합니다!)\n\n` +
-          `💪 អ្នកអាចធ្វើបាន! ហ្វឹកហាត់ខ្លាំងៗ!`
+          `🌅 អរុណសួស្តី ${student.first_name}!\n` +
+          `📅 ថ្ងៃទី ${currentDay} / 35\n\n` +
+          `💪 ចាប់ផ្តើមរៀនពាក្យថ្ងៃនេះ!`
         );
-        // 단어카드 전송
         await sendWordCards(bot, student.id, currentDay);
       }
 
