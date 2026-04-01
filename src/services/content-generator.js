@@ -166,7 +166,7 @@ async function generateCardsForDay(bot, dayNumber) {
 // ── TTS 음성 생성 ──
 async function generateTTSForWord(word) {
   try {
-    const response = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input: word.korean, speed: 0.9 });
+    const response = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input: word.korean, speed: 0.75 });
     const audioBuffer = Buffer.from(await response.arrayBuffer());
     const fileName = `audio/day${word.day_number}/${word.id}.mp3`;
     const { error } = await supabase.storage.from('word-cards').upload(fileName, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
