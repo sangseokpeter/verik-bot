@@ -4,7 +4,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, handleStudentAsk, handleReply, isAdmin } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, handleStudentAsk, handleReply, handleStats, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -25,6 +25,7 @@ bot.onText(/\/generate_cards (\d+)/, (msg, match) => handleGenerateCards(bot, ms
 bot.onText(/\/generate_tts (\d+)/, (msg, match) => handleGenerateTTS(bot, msg, match[1]));
 bot.onText(/\/generate_all/, (msg) => handleGenerateAll(bot, msg));
 bot.onText(/\/reply (\d+) (.+)/, (msg, match) => handleReply(bot, msg, match[1], match[2]));
+bot.onText(/\/stats/, (msg) => handleStats(bot, msg));
 
 // ── 학생 문의 ──
 bot.onText(/\/ask (.+)/, (msg, match) => handleStudentAsk(bot, msg, match[1]));

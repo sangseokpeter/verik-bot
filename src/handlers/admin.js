@@ -298,6 +298,50 @@ async function handleReply(bot, msg, studentId, message) {
   }
 }
 
+// ── /stats — 학생 현황 통계 ──
+async function handleStats(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  // 전체 학생
+  const { data: students } = await supabase
+    .from('students')
+    .select('id, start_date')
+    .eq('is_active', true);
+
+  const totalStudents = students?.length || 0;
+
+  // 오늘 퀴즈 완료 학생 수
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { count: activeToday } = await supabase
+    .from('daily_activity')
+    .select('id', { count: 'exact' })
+    .eq('activity_date', todayStr)
+    .eq('quiz_completed', true);
+
+  // Day별 학생 수 분포
+  const dayMap = {};
+  for (const s of (students || [])) {
+    const day = calcCurrentDay(s.start_date);
+    dayMap[day] = (dayMap[day] || 0) + 1;
+  }
+
+  const dayDist = Object.entries(dayMap)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([day, count]) => `  Day ${day}: ${count}명`)
+    .join('\n');
+
+  await bot.sendMessage(msg.chat.id,
+    `📊 VERI-K Stats\n` +
+    `──────────────────\n` +
+    `👥 Total students: ${totalStudents}\n` +
+    `📅 Active today: ${activeToday || 0}\n` +
+    `──────────────────\n` +
+    `📈 Day distribution:\n${dayDist || '  (no students)'}`
+  );
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -307,6 +351,7 @@ module.exports = {
   handleAdminMessage,
   handleStudentAsk,
   handleReply,
+  handleStats,
   isAdmin,
   ADMIN_IDS
 };
