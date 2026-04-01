@@ -4,11 +4,10 @@
 const { supabase } = require('../config/supabase');
 
 /**
- * 단어 카드 전송 (Next/이전 버튼 포함) + 음성 자동 전송
+ * 단어 카드 전송 (Next/이전/🔊 버튼 포함)
  */
 async function sendWordCard(bot, chatId, day, index) {
   try {
-    // DB에서 해당 Day의 단어 목록 가져오기
     const { data: words, error } = await supabase
       .from('words')
       .select('*')
@@ -22,7 +21,6 @@ async function sendWordCard(bot, chatId, day, index) {
 
     const total = words.length;
 
-    // 인덱스 범위 체크
     if (index < 0 || index >= total) {
       await bot.sendMessage(chatId, '카드 범위를 벗어났습니다.');
       return;
@@ -30,20 +28,16 @@ async function sendWordCard(bot, chatId, day, index) {
 
     const word = words[index];
 
-    // 카드 이미지 URL 체크
     if (!word.image_url) {
       await bot.sendMessage(chatId, `❌ 카드 이미지가 없습니다: ${word.korean}`);
       return;
     }
 
-    // 캡션
     const caption = `${word.korean} (${index + 1}/${total})`;
 
-    // Inline Keyboard 버튼 (이전/다음만)
-    const keyboard = [];
+    // Inline Keyboard: 이전 / 🔊 / 다음
     const buttons = [];
 
-    // 이전 버튼 (첫 카드가 아닐 때만)
     if (index > 0) {
       buttons.push({
         text: '◀ 이전',
@@ -51,7 +45,10 @@ async function sendWordCard(bot, chatId, day, index) {
       });
     }
 
-    // 다음 버튼 (마지막 카드가 아닐 때만)
+    if (word.audio_url) {
+      buttons.push({ text: '🔊', callback_data: `tts_${word.id}` });
+    }
+
     if (index < total - 1) {
       buttons.push({
         text: '다음 ▶',
@@ -59,24 +56,12 @@ async function sendWordCard(bot, chatId, day, index) {
       });
     }
 
-    if (buttons.length > 0) {
-      keyboard.push(buttons);
-    }
-
-    // 카드 이미지 전송
     await bot.sendPhoto(chatId, word.image_url, {
       caption: caption,
-      reply_markup: keyboard.length > 0 ? {
-        inline_keyboard: keyboard
+      reply_markup: buttons.length > 0 ? {
+        inline_keyboard: [buttons]
       } : undefined
     });
-
-    // 음성 자동 전송 (audio_url이 있으면)
-    if (word.audio_url) {
-      await bot.sendAudio(chatId, word.audio_url, {
-        caption: `🔊 ${word.korean} ${word.pronunciation || ''}`
-      });
-    }
 
   } catch (error) {
     console.error('Error sending word card:', error);
@@ -85,7 +70,7 @@ async function sendWordCard(bot, chatId, day, index) {
 }
 
 /**
- * Word Card Callback 핸들러 (버튼 클릭)
+ * Word Card Callback 핸들러 (이전/다음 버튼)
  */
 async function handleWordCardCallback(bot, query) {
   try {
@@ -94,31 +79,57 @@ async function handleWordCardCallback(bot, query) {
 
     if (data.startsWith('card_')) {
       const parts = data.split('_');
-      const action = parts[1]; // prev 또는 next
+      const action = parts[1];
       const day = parseInt(parts[2]);
       const currentIndex = parseInt(parts[3]);
 
       let newIndex = currentIndex;
+      if (action === 'next') newIndex = currentIndex + 1;
+      else if (action === 'prev') newIndex = currentIndex - 1;
 
-      if (action === 'next') {
-        newIndex = currentIndex + 1;
-      } else if (action === 'prev') {
-        newIndex = currentIndex - 1;
-      }
-
-      // 새 카드 전송
       await sendWordCard(bot, chatId, day, newIndex);
-
-      // 버튼 클릭 응답 (로딩 표시 제거)
       await bot.answerCallbackQuery(query.id);
     }
 
   } catch (error) {
     console.error('Error handling word card callback:', error);
-    await bot.answerCallbackQuery(query.id, {
-      text: '오류가 발생했습니다.',
-      show_alert: true
+    await bot.answerCallbackQuery(query.id, { text: '오류가 발생했습니다.', show_alert: true });
+  }
+}
+
+/**
+ * TTS Callback — 음성 전송 후 5초 뒤 자동 삭제 (연쇄 재생 방지)
+ */
+async function handleTTSCallback(bot, query) {
+  try {
+    const chatId = query.message.chat.id;
+    const wordId = parseInt(query.data.split('_')[1]);
+
+    const { data: word } = await supabase
+      .from('words')
+      .select('korean, pronunciation, audio_url')
+      .eq('id', wordId)
+      .single();
+
+    if (!word?.audio_url) {
+      await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
+      return;
+    }
+
+    const sent = await bot.sendAudio(chatId, word.audio_url, {
+      caption: `🔊 ${word.korean} ${word.pronunciation || ''}`
     });
+
+    await bot.answerCallbackQuery(query.id);
+
+    // 5초 후 음성 메시지 자동 삭제 → 채팅에 오디오 안 쌓임 → 연쇄 재생 방지
+    setTimeout(() => {
+      bot.deleteMessage(chatId, sent.message_id).catch(() => {});
+    }, 5000);
+
+  } catch (err) {
+    console.error('TTS callback error:', err);
+    await bot.answerCallbackQuery(query.id, { text: '오류가 발생했습니다.' });
   }
 }
 
@@ -126,4 +137,4 @@ async function sendWordCards(bot, chatId, day) {
   await sendWordCard(bot, chatId, day, 0);
 }
 
-module.exports = { handleWordCardCallback, sendWordCard, sendWordCards };
+module.exports = { handleWordCardCallback, sendWordCard, sendWordCards, handleTTSCallback };
