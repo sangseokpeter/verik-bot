@@ -73,7 +73,7 @@ async function sendWordCard(bot, chatId, day, index) {
 
     // 음성 자동 전송 (audio_url이 있으면)
     if (word.audio_url) {
-      await bot.sendVoice(chatId, word.audio_url, {
+      await bot.sendAudio(chatId, word.audio_url, {
         caption: `🔊 ${word.korean} ${word.pronunciation || ''}`
       });
     }
