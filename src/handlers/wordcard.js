@@ -3,11 +3,8 @@
 // ============================================
 const { supabase } = require('../config/supabase');
 
-// 채팅별 마지막 TTS 메시지 ID (연쇄 재생 방지용)
-const lastTTSMessage = new Map();
-
 /**
- * 단어 카드 전송 (Next/이전 버튼 포함)
+ * 단어 카드 전송 (Next/이전 버튼 포함) + 음성 자동 전송
  */
 async function sendWordCard(bot, chatId, day, index) {
   try {
@@ -24,7 +21,7 @@ async function sendWordCard(bot, chatId, day, index) {
     }
 
     const total = words.length;
-    
+
     // 인덱스 범위 체크
     if (index < 0 || index >= total) {
       await bot.sendMessage(chatId, '카드 범위를 벗어났습니다.');
@@ -42,7 +39,7 @@ async function sendWordCard(bot, chatId, day, index) {
     // 캡션
     const caption = `${word.korean} (${index + 1}/${total})`;
 
-    // Inline Keyboard 버튼
+    // Inline Keyboard 버튼 (이전/다음만)
     const keyboard = [];
     const buttons = [];
 
@@ -52,11 +49,6 @@ async function sendWordCard(bot, chatId, day, index) {
         text: '◀ 이전',
         callback_data: `card_prev_${day}_${index}`
       });
-    }
-
-    // TTS 버튼 (audio_url이 있을 때만)
-    if (word.audio_url) {
-      buttons.push({ text: '🔊', callback_data: `tts_${word.id}` });
     }
 
     // 다음 버튼 (마지막 카드가 아닐 때만)
@@ -71,13 +63,20 @@ async function sendWordCard(bot, chatId, day, index) {
       keyboard.push(buttons);
     }
 
-    // 카드 전송
+    // 카드 이미지 전송
     await bot.sendPhoto(chatId, word.image_url, {
       caption: caption,
       reply_markup: keyboard.length > 0 ? {
         inline_keyboard: keyboard
       } : undefined
     });
+
+    // 음성 자동 전송 (audio_url이 있으면)
+    if (word.audio_url) {
+      await bot.sendVoice(chatId, word.audio_url, {
+        caption: `🔊 ${word.korean} ${word.pronunciation || ''}`
+      });
+    }
 
   } catch (error) {
     console.error('Error sending word card:', error);
@@ -127,37 +126,4 @@ async function sendWordCards(bot, chatId, day) {
   await sendWordCard(bot, chatId, day, 0);
 }
 
-async function handleTTSCallback(bot, query) {
-  try {
-    const chatId = query.message.chat.id;
-    const wordId = parseInt(query.data.split('_')[1]);
-    const { data: word } = await supabase
-      .from('words')
-      .select('korean, pronunciation, audio_url')
-      .eq('id', wordId)
-      .single();
-    if (word?.audio_url) {
-      // 이전 TTS 메시지 삭제 (1개만 유지)
-      const prevMsgId = lastTTSMessage.get(chatId);
-      if (prevMsgId) {
-        try { await bot.deleteMessage(chatId, prevMsgId); } catch (e) {}
-      }
-      // 발음 + 재생 링크를 텍스트 메시지로 전송 (오디오 파일 X → 연쇄 재생 불가)
-      const sent = await bot.sendMessage(chatId,
-        `🔊 ${word.korean} ${word.pronunciation || ''}\n\n` +
-        `▶️ [음성 듣기](${word.audio_url})`,
-        { parse_mode: 'Markdown', disable_web_page_preview: false }
-      );
-      lastTTSMessage.set(chatId, sent.message_id);
-    } else {
-      await bot.answerCallbackQuery(query.id, { text: '음성 파일이 없습니다.' });
-      return;
-    }
-    await bot.answerCallbackQuery(query.id);
-  } catch (err) {
-    console.error('TTS callback error:', err);
-    await bot.answerCallbackQuery(query.id, { text: '오류가 발생했습니다.' });
-  }
-}
-
-module.exports = { handleWordCardCallback, sendWordCard, sendWordCards, handleTTSCallback };
+module.exports = { handleWordCardCallback, sendWordCard, sendWordCards };
