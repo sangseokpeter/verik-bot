@@ -327,17 +327,49 @@ def download_tts_audio(audio_url, filepath):
         pass
     return False
 
-def create_padded_audio(input_mp3, output_wav, pad_before=0.6):
-    """Add silence before TTS audio, pad to DURATION total. Output WAV for ffmpeg."""
+def create_combined_audio(word_mp3, example_mp3, output_wav):
+    """Combine word TTS at 0.6s and example TTS at 3.0s into one audio track."""
     ffmpeg = find_ffmpeg()
-    # Create silence + TTS concat, pad to 5 seconds
-    cmd = [ffmpeg, '-y',
-           '-f', 'lavfi', '-t', str(pad_before), '-i', 'anullsrc=r=44100:cl=mono',
-           '-i', input_mp3,
-           '-filter_complex', f'[0][1]concat=n=2:v=0:a=1,apad=whole_dur={DURATION}[out]',
-           '-map', '[out]', '-ac', '1', '-ar', '44100', output_wav]
-    subprocess.run(cmd, capture_output=True, timeout=30)
-    return os.path.exists(output_wav)
+
+    inputs = []
+    filters = []
+
+    # Base: 5-second silence
+    inputs.extend(['-f', 'lavfi', '-t', str(DURATION), '-i', 'anullsrc=r=44100:cl=mono'])
+    base_idx = 0
+    next_idx = 1
+
+    has_word = word_mp3 and os.path.exists(word_mp3) and os.path.getsize(word_mp3) > 100
+    has_example = example_mp3 and os.path.exists(example_mp3) and os.path.getsize(example_mp3) > 100
+
+    if has_word:
+        inputs.extend(['-i', word_mp3])
+        word_idx = next_idx
+        next_idx += 1
+        filters.append(f'[{word_idx}]adelay=600|600[word]')
+
+    if has_example:
+        inputs.extend(['-i', example_mp3])
+        ex_idx = next_idx
+        next_idx += 1
+        filters.append(f'[{ex_idx}]adelay=3000|3000[ex]')
+
+    # Mix all tracks together
+    if has_word and has_example:
+        filters.append(f'[{base_idx}][word][ex]amix=inputs=3:duration=first[out]')
+    elif has_word:
+        filters.append(f'[{base_idx}][word]amix=inputs=2:duration=first[out]')
+    elif has_example:
+        filters.append(f'[{base_idx}][ex]amix=inputs=2:duration=first[out]')
+    else:
+        filters.append(f'[{base_idx}]acopy[out]')
+
+    cmd = [ffmpeg, '-y'] + inputs + [
+        '-filter_complex', ';'.join(filters),
+        '-map', '[out]', '-ac', '1', '-ar', '44100', '-t', str(DURATION), output_wav
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=30)
+    return os.path.exists(output_wav) and os.path.getsize(output_wav) > 100
 
 def encode_video(frames_dir, audio_path, output_path):
     ffmpeg = find_ffmpeg()
@@ -356,17 +388,22 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
     try:
         generate_frames(base, illust, word_sec, example_sec, tmp)
 
-        # TTS 오디오 다운로드 시도, 실패 시 chime 폴백
         audio_path = os.path.join(tmp, 'audio.wav')
-        tts_used = False
+        word_mp3 = os.path.join(tmp, 'word.mp3')
+        example_mp3 = os.path.join(tmp, 'example.mp3')
+
+        # 단어 TTS 다운로드
         audio_url = word_data.get('audio_url', '')
         if audio_url:
-            tts_mp3 = os.path.join(tmp, 'tts.mp3')
-            if download_tts_audio(audio_url, tts_mp3):
-                if create_padded_audio(tts_mp3, audio_path):
-                    tts_used = True
+            download_tts_audio(audio_url, word_mp3)
 
-        if not tts_used:
+        # 예문 TTS 다운로드
+        example_audio_url = word_data.get('example_audio_url', '')
+        if example_audio_url:
+            download_tts_audio(example_audio_url, example_mp3)
+
+        # 두 TTS를 0.6초/3.0초에 합성, 실패 시 chime 폴백
+        if not create_combined_audio(word_mp3, example_mp3, audio_path):
             create_chime_audio(audio_path)
 
         encode_video(tmp, audio_path, output_path)

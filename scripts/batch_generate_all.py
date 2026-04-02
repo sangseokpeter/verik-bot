@@ -100,6 +100,7 @@ def main():
             'example_khmer': word.get('example_khmer', ''),
             'category': word.get('category', ''),
             'audio_url': word.get('audio_url', ''),
+            'example_audio_url': word.get('example_audio_url', ''),
         }
 
         ok = False
