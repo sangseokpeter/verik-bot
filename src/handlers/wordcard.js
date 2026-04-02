@@ -4,7 +4,7 @@
 const { supabase } = require('../config/supabase');
 
 /**
- * 단어 카드 전송 (Next/이전/🔊 버튼 포함)
+ * 단어 카드 전송 — 비디오 우선, 이미지 폴백
  */
 async function sendWordCard(bot, chatId, day, index) {
   try {
@@ -27,12 +27,6 @@ async function sendWordCard(bot, chatId, day, index) {
     }
 
     const word = words[index];
-
-    if (!word.image_url) {
-      await bot.sendMessage(chatId, `❌ 카드 이미지가 없습니다: ${word.korean}`);
-      return;
-    }
-
     const caption = `${word.korean} (${index + 1}/${total})`;
 
     // Inline Keyboard: 이전 / 🔊 / 다음
@@ -56,12 +50,35 @@ async function sendWordCard(bot, chatId, day, index) {
       });
     }
 
-    await bot.sendPhoto(chatId, word.image_url, {
-      caption: caption,
-      reply_markup: buttons.length > 0 ? {
-        inline_keyboard: [buttons]
-      } : undefined
-    });
+    const replyMarkup = buttons.length > 0 ? {
+      inline_keyboard: [buttons]
+    } : undefined;
+
+    // 비디오 우선 전송, 없으면 이미지 폴백
+    let sent = false;
+    if (word.video_url) {
+      try {
+        await bot.sendVideo(chatId, word.video_url, {
+          caption: caption,
+          supports_streaming: true,
+          reply_markup: replyMarkup
+        });
+        sent = true;
+      } catch (err) {
+        console.error(`Video send failed for ${word.korean}, falling back to image`);
+      }
+    }
+
+    if (!sent) {
+      if (!word.image_url) {
+        await bot.sendMessage(chatId, `❌ 카드가 없습니다: ${word.korean}`);
+        return;
+      }
+      await bot.sendPhoto(chatId, word.image_url, {
+        caption: caption,
+        reply_markup: replyMarkup
+      });
+    }
 
   } catch (error) {
     console.error('Error sending word card:', error);
@@ -122,7 +139,6 @@ async function handleTTSCallback(bot, query) {
 
     await bot.answerCallbackQuery(query.id);
 
-    // 5초 후 음성 메시지 자동 삭제 → 채팅에 오디오 안 쌓임 → 연쇄 재생 방지
     setTimeout(() => {
       bot.deleteMessage(chatId, sent.message_id).catch(() => {});
     }, 5000);

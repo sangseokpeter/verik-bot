@@ -342,6 +342,31 @@ async function handleStats(bot, msg) {
   );
 }
 
+// ── /generate_motion [day] — 모션 카드 비디오 생성 ──
+async function handleGenerateMotion(bot, msg, dayArg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const label = dayArg ? `Day ${dayArg}` : 'All 35 days';
+  await bot.sendMessage(msg.chat.id, `🎬 Starting motion card generation: ${label}...`);
+
+  const { execSync } = require('child_process');
+  try {
+    const cmd = dayArg
+      ? `python3 scripts/batch_generate_all.py ${dayArg}`
+      : 'python3 scripts/batch_generate_all.py';
+    const result = execSync(cmd, {
+      timeout: 1800000,
+      env: { ...process.env },
+      cwd: require('path').resolve(__dirname, '../..')
+    });
+    await bot.sendMessage(msg.chat.id, `✅ Motion card generation complete!\n${result.toString().split('\n').slice(-3).join('\n')}`);
+  } catch (err) {
+    await bot.sendMessage(msg.chat.id, `❌ Error: ${err.stderr?.toString()?.slice(-200) || err.message}`);
+  }
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -352,6 +377,7 @@ module.exports = {
   handleStudentAsk,
   handleReply,
   handleStats,
+  handleGenerateMotion,
   isAdmin,
   ADMIN_IDS
 };

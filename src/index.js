@@ -4,7 +4,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, handleStudentAsk, handleReply, handleStats, isAdmin } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleAdminMessage, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -26,6 +26,7 @@ bot.onText(/\/generate_tts (\d+)/, (msg, match) => handleGenerateTTS(bot, msg, m
 bot.onText(/\/generate_all/, (msg) => handleGenerateAll(bot, msg));
 bot.onText(/\/reply (\d+) (.+)/, (msg, match) => handleReply(bot, msg, match[1], match[2]));
 bot.onText(/\/stats/, (msg) => handleStats(bot, msg));
+bot.onText(/\/generate_motion(?:\s+(\d+))?/, (msg, match) => handleGenerateMotion(bot, msg, match[1]));
 
 // ── 학생 문의 ──
 bot.onText(/\/ask (.+)/, (msg, match) => handleStudentAsk(bot, msg, match[1]));
