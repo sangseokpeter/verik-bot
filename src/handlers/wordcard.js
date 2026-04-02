@@ -29,39 +29,27 @@ async function sendWordCard(bot, chatId, day, index) {
     const word = words[index];
     const caption = `${word.korean} (${index + 1}/${total})`;
 
-    // Inline Keyboard: 이전 / 🔊 / 다음
-    const buttons = [];
-
+    // 이전/다음 버튼 (비디오·이미지 공통)
+    const navButtons = [];
     if (index > 0) {
-      buttons.push({
-        text: '◀ 이전',
-        callback_data: `card_prev_${day}_${index}`
-      });
+      navButtons.push({ text: '◀ 이전', callback_data: `card_prev_${day}_${index}` });
     }
-
-    if (word.audio_url) {
-      buttons.push({ text: '🔊', callback_data: `tts_${word.id}` });
-    }
-
     if (index < total - 1) {
-      buttons.push({
-        text: '다음 ▶',
-        callback_data: `card_next_${day}_${index}`
-      });
+      navButtons.push({ text: '다음 ▶', callback_data: `card_next_${day}_${index}` });
     }
 
-    const replyMarkup = buttons.length > 0 ? {
-      inline_keyboard: [buttons]
+    const navMarkup = navButtons.length > 0 ? {
+      inline_keyboard: [navButtons]
     } : undefined;
 
-    // 비디오 우선 전송, 없으면 이미지 폴백
+    // 비디오 우선 전송 (TTS 내장 → 🔊 버튼 불필요)
     let sent = false;
     if (word.video_url) {
       try {
         await bot.sendVideo(chatId, word.video_url, {
           caption: caption,
           supports_streaming: true,
-          reply_markup: replyMarkup
+          reply_markup: navMarkup
         });
         sent = true;
       } catch (err) {
@@ -69,14 +57,20 @@ async function sendWordCard(bot, chatId, day, index) {
       }
     }
 
+    // 이미지 폴백 (🔊 버튼 추가)
     if (!sent) {
       if (!word.image_url) {
         await bot.sendMessage(chatId, `❌ 카드가 없습니다: ${word.korean}`);
         return;
       }
+      const imgButtons = [...navButtons];
+      if (word.audio_url) {
+        imgButtons.splice(navButtons.length > 0 && index > 0 ? 1 : 0, 0,
+          { text: '🔊', callback_data: `tts_${word.id}` });
+      }
       await bot.sendPhoto(chatId, word.image_url, {
         caption: caption,
-        reply_markup: replyMarkup
+        reply_markup: imgButtons.length > 0 ? { inline_keyboard: [imgButtons] } : undefined
       });
     }
 

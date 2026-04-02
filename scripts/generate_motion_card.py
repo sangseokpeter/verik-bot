@@ -91,18 +91,27 @@ def get_twemoji_image(emoji_str, size=280):
     fname = emoji_to_codepoints(emoji_str) + '.png'
     cached = os.path.join(TWEMOJI_CACHE, fname)
 
-    if not os.path.exists(cached):
-        url = f'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/{fname}'
-        try:
-            if hasattr(requests, 'get'):
-                r = requests.get(url, timeout=5)
-                if r.status_code == 200:
-                    with open(cached, 'wb') as f:
-                        f.write(r.content)
-            else:
-                requests.urlretrieve(url, cached)
-        except:
-            return None
+    if not os.path.exists(cached) or os.path.getsize(cached) < 100:
+        # Try multiple CDN sources
+        urls = [
+            f'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/{fname}',
+            f'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/{fname}',
+            f'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/{fname}',
+        ]
+        for url in urls:
+            try:
+                if hasattr(requests, 'get'):
+                    r = requests.get(url, timeout=8)
+                    if r.status_code == 200 and len(r.content) > 100:
+                        with open(cached, 'wb') as f:
+                            f.write(r.content)
+                        break
+                else:
+                    requests.urlretrieve(url, cached)
+                    if os.path.exists(cached) and os.path.getsize(cached) > 100:
+                        break
+            except:
+                continue
 
     if os.path.exists(cached) and os.path.getsize(cached) > 100:
         try:
@@ -302,6 +311,34 @@ def create_chime_audio(filepath):
             frames.append(struct.pack('<h', max(-32767,min(32767,v))))
         w.writeframes(b''.join(frames))
 
+def download_tts_audio(audio_url, filepath):
+    """Download TTS MP3 from Supabase Storage. Returns True on success."""
+    try:
+        if hasattr(requests, 'get'):
+            r = requests.get(audio_url, timeout=10)
+            if r.status_code == 200 and len(r.content) > 100:
+                with open(filepath, 'wb') as f:
+                    f.write(r.content)
+                return True
+        else:
+            requests.urlretrieve(audio_url, filepath)
+            return os.path.exists(filepath) and os.path.getsize(filepath) > 100
+    except:
+        pass
+    return False
+
+def create_padded_audio(input_mp3, output_wav, pad_before=0.6):
+    """Add silence before TTS audio, pad to DURATION total. Output WAV for ffmpeg."""
+    ffmpeg = find_ffmpeg()
+    # Create silence + TTS concat, pad to 5 seconds
+    cmd = [ffmpeg, '-y',
+           '-f', 'lavfi', '-t', str(pad_before), '-i', 'anullsrc=r=44100:cl=mono',
+           '-i', input_mp3,
+           '-filter_complex', f'[0][1]concat=n=2:v=0:a=1,apad=whole_dur={DURATION}[out]',
+           '-map', '[out]', '-ac', '1', '-ar', '44100', output_wav]
+    subprocess.run(cmd, capture_output=True, timeout=30)
+    return os.path.exists(output_wav)
+
 def encode_video(frames_dir, audio_path, output_path):
     ffmpeg = find_ffmpeg()
     cmd = [ffmpeg,'-y','-framerate',str(FPS),'-i',f'{frames_dir}/f_%04d.png',
@@ -316,11 +353,23 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
     example_sec = create_example_section(word_data.get('example_kr',''), word_data.get('example_khmer',''), word_data['korean'])
 
     tmp = tempfile.mkdtemp()
-    audio = os.path.join(tmp, 'chime.wav')
     try:
         generate_frames(base, illust, word_sec, example_sec, tmp)
-        create_chime_audio(audio)
-        encode_video(tmp, audio, output_path)
+
+        # TTS 오디오 다운로드 시도, 실패 시 chime 폴백
+        audio_path = os.path.join(tmp, 'audio.wav')
+        tts_used = False
+        audio_url = word_data.get('audio_url', '')
+        if audio_url:
+            tts_mp3 = os.path.join(tmp, 'tts.mp3')
+            if download_tts_audio(audio_url, tts_mp3):
+                if create_padded_audio(tts_mp3, audio_path):
+                    tts_used = True
+
+        if not tts_used:
+            create_chime_audio(audio_path)
+
+        encode_video(tmp, audio_path, output_path)
         return os.path.exists(output_path)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -92,38 +92,46 @@ def main():
         output_path = os.path.join(tmp_dir, f'motion_{key}.mp4')
         storage_path = f'videos/day{day}/{wid}.mp4'
 
-        try:
-            word_data = {
-                'korean': korean,
-                'pronunciation': word.get('pronunciation', f'[{korean}]'),
-                'meaning_khmer': word.get('meaning_khmer', ''),
-                'example_kr': word.get('example_kr', ''),
-                'example_khmer': word.get('example_khmer', ''),
-                'category': word.get('category', ''),
-            }
+        word_data = {
+            'korean': korean,
+            'pronunciation': word.get('pronunciation', f'[{korean}]'),
+            'meaning_khmer': word.get('meaning_khmer', ''),
+            'example_kr': word.get('example_kr', ''),
+            'example_khmer': word.get('example_khmer', ''),
+            'category': word.get('category', ''),
+            'audio_url': word.get('audio_url', ''),
+        }
 
-            success = generate_single_card(word_data, day, emoji_str, custom_path, SUPABASE_URL, output_path)
+        ok = False
+        for attempt in range(3):
+            try:
+                success = generate_single_card(word_data, day, emoji_str, custom_path, SUPABASE_URL, output_path)
 
-            if success and os.path.exists(output_path):
-                uploaded = upload_to_storage(output_path, storage_path)
-                if uploaded:
-                    public_url = f'{SUPABASE_URL}/storage/v1/object/public/word-cards/{storage_path}'
-                    update_video_url(wid, public_url)
-                    done += 1
+                if success and os.path.exists(output_path):
+                    uploaded = upload_to_storage(output_path, storage_path)
+                    if uploaded:
+                        public_url = f'{SUPABASE_URL}/storage/v1/object/public/word-cards/{storage_path}'
+                        update_video_url(wid, public_url)
+                        done += 1
+                        ok = True
+                    else:
+                        print(f"  UPLOAD FAIL: {key} {korean} (attempt {attempt+1})")
+                    try:
+                        os.remove(output_path)
+                    except:
+                        pass
                 else:
-                    errors += 1
-                    print(f"  UPLOAD FAIL: {key} {korean}")
-                try:
-                    os.remove(output_path)
-                except:
-                    pass
-            else:
-                errors += 1
-                print(f"  GENERATE FAIL: {key} {korean}")
+                    print(f"  GENERATE FAIL: {key} {korean} (attempt {attempt+1})")
 
-        except Exception as e:
+                if ok:
+                    break
+            except Exception as e:
+                print(f"  RETRY {attempt+1}/3 {key} {korean}: {str(e)[:60]}")
+                time.sleep(2)
+
+        if not ok:
             errors += 1
-            print(f"  ERROR {key} {korean}: {str(e)[:80]}")
+            print(f"  FAILED: {key} {korean}")
 
         if (done + errors) % 10 == 0:
             print(f"  Progress: {done+errors}/{total} (ok={done} err={errors})")
