@@ -11,7 +11,7 @@ except ImportError:
     import urllib.request as requests
 
 # === DESIGN CONFIG ===
-W, H = 760, 950
+W = 760
 BORDER = 8
 GOLD_DARK = "#8B7535"
 GOLD_LIGHT = "#C5A94E"
@@ -149,13 +149,13 @@ def get_custom_image(supabase_path, supabase_url, size=280):
 
 # === CARD COMPONENTS ===
 
-def create_base_card(day_number):
+def create_base_card(day_number, card_h, brand_y):
     fonts = get_fonts()
-    img = Image.new('RGB', (W, H), '#F5EDDA')
+    img = Image.new('RGB', (W, card_h), '#F5EDDA')
     draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle((4, 4, W-4, H-4), radius=20, outline="#6B5A28", width=6)
-    draw.rounded_rectangle((BORDER, BORDER, W-BORDER, H-BORDER), radius=18, fill=CARD_INNER, outline=GOLD_DARK, width=4)
-    draw.rounded_rectangle((BORDER+8, BORDER+8, W-BORDER-8, H-BORDER-8), radius=14, outline=GOLD_LIGHT, width=1)
+    draw.rounded_rectangle((4, 4, W-4, card_h-4), radius=20, outline="#6B5A28", width=6)
+    draw.rounded_rectangle((BORDER, BORDER, W-BORDER, card_h-BORDER), radius=18, fill=CARD_INNER, outline=GOLD_DARK, width=4)
+    draw.rounded_rectangle((BORDER+8, BORDER+8, W-BORDER-8, card_h-BORDER-8), radius=14, outline=GOLD_LIGHT, width=1)
 
     badge_w, badge_h = 120, 42
     bx = (W - badge_w) // 2
@@ -165,7 +165,12 @@ def create_base_card(day_number):
     bbox = draw.textbbox((0,0), day_text, font=fonts['badge'])
     tw = bbox[2] - bbox[0]
     draw.text((bx + (badge_w-tw)//2, by+8), day_text, fill="#FFFFFF", font=fonts['badge'])
-    draw.text((W//2 - 30, H-45), "VERI-K", fill=GOLD_LIGHT, font=fonts['sm'])
+
+    # VERI-K 브랜드 (균등 분배 위치)
+    brand_text = "VERI-K"
+    bb = draw.textbbox((0,0), brand_text, font=fonts['sm'])
+    brand_tw = bb[2] - bb[0]
+    draw.text(((W - brand_tw)//2, brand_y), brand_text, fill=GOLD_LIGHT, font=fonts['sm'])
     return img
 
 def create_illustration(emoji_str, korean, category, custom_path, supabase_url):
@@ -203,7 +208,14 @@ def create_illustration(emoji_str, korean, category, custom_path, supabase_url):
 
 def create_word_section(korean, pronunciation, khmer):
     fonts = get_fonts()
-    img = Image.new('RGBA', (W-60, 220), (0,0,0,0))
+
+    # [간격3] 한국어 끝 ↔ 발음: +15px (80→95)
+    # [간격4] 발음 끝 ↔ 크메르어: +15px (130→160)
+    pron_y = 95    # was 80
+    khmer_y = 160  # was 130
+    section_h = 240  # was 220, expanded to fit
+
+    img = Image.new('RGBA', (W-60, section_h), (0,0,0,0))
     draw = ImageDraw.Draw(img)
     area_w = img.size[0]
 
@@ -213,11 +225,11 @@ def create_word_section(korean, pronunciation, khmer):
 
     bbox2 = draw.textbbox((0,0), pronunciation, font=fonts['pron'])
     tw2 = bbox2[2]-bbox2[0]
-    draw.text(((area_w-tw2)//2, 80), pronunciation, fill=TEXT_GRAY, font=fonts['pron'])
+    draw.text(((area_w-tw2)//2, pron_y), pronunciation, fill=TEXT_GRAY, font=fonts['pron'])
 
     bbox3 = draw.textbbox((0,0), khmer, font=fonts['khmer_big'])
     tw3 = bbox3[2]-bbox3[0]
-    draw.text(((area_w-tw3)//2, 130), khmer, fill=TEXT_KHMER, font=fonts['khmer_big'])
+    draw.text(((area_w-tw3)//2, khmer_y), khmer, fill=TEXT_KHMER, font=fonts['khmer_big'])
     return img
 
 def create_example_section(example_kr, example_khmer, keyword):
@@ -245,7 +257,13 @@ def create_example_section(example_kr, example_khmer, keyword):
 
 # === ANIMATION ===
 
-def generate_frames(base, illust, word_sec, example_sec, output_dir):
+def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None):
+    if layout is None:
+        layout = {'illust_y': 60, 'word_y': 390, 'ex_y': 590}
+    illust_y = layout['illust_y']
+    word_y = layout['word_y']
+    ex_y = layout['ex_y']
+
     n = int(DURATION * FPS)
     os.makedirs(output_dir, exist_ok=True)
     for i in range(n):
@@ -256,7 +274,7 @@ def generate_frames(base, illust, word_sec, example_sec, output_dir):
             a = min(1.0, t/0.4)
             temp = illust.copy()
             if a < 1: temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x*a)))
-            frame.paste(temp, (30,60), temp)
+            frame.paste(temp, (30, illust_y), temp)
 
         if t >= 0.6 and t < 1.8:
             a = min(1.0, (t-0.6)/0.4)
@@ -265,20 +283,20 @@ def generate_frames(base, illust, word_sec, example_sec, output_dir):
             ImageDraw.Draw(mask).rectangle((0,0,temp.size[0],110), fill=int(255*a))
             tm = Image.new('RGBA', temp.size, (0,0,0,0))
             tm.paste(temp, (0,0), mask)
-            frame.paste(tm, (30,390), tm)
+            frame.paste(tm, (30, word_y), tm)
 
         if t >= 1.8:
             a = min(1.0, (t-1.8)/0.3)
             temp = word_sec.copy()
             if a < 1: temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x*a)))
-            frame.paste(temp, (30,390), temp)
+            frame.paste(temp, (30, word_y), temp)
 
         if t >= 3.0:
             a = min(1.0, (t-3.0)/0.5)
             yo = int((1-a)*25)
             temp = example_sec.copy()
             if a < 1: temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x*a)))
-            frame.paste(temp, (40,590+yo), temp)
+            frame.paste(temp, (40, ex_y+yo), temp)
 
         frame.save(f'{output_dir}/f_{i:04d}.png')
 
@@ -378,15 +396,47 @@ def encode_video(frames_dir, audio_path, output_path):
            '-c:a','aac','-b:a','128k','-shortest','-movflags','+faststart',output_path]
     subprocess.run(cmd, capture_output=True, timeout=60)
 
+def compute_layout(illust_h=320, word_sec_h=240, example_h=180):
+    """레이아웃 위치 자동 계산 (간격 수정 5곳 반영)"""
+    # [간격1] 골드 테두리 끝 ↔ 일러스트: +15px (60→75)
+    illust_y = 75  # was 60
+
+    # [간격2] 일러스트 끝 ↔ 한국어 단어: +30px
+    word_y = illust_y + illust_h + 40  # was +10 gap, now +40 (+30 more)
+
+    # 한국어/발음/크메르어 끝 (word_sec 내부 간격은 create_word_section에서 처리)
+    word_end_y = word_y + word_sec_h
+
+    # [간격5] 크메르어 뜻 ~ 예문 박스 ~ VERI-K 브랜드: 균등 분배
+    brand_h = 25
+    equal_gap = 50
+
+    ex_y = word_end_y + equal_gap
+    ex_end_y = ex_y + example_h
+    brand_y = ex_end_y + equal_gap
+    card_h = brand_y + brand_h + equal_gap
+
+    return {
+        'illust_y': illust_y,
+        'word_y': word_y,
+        'ex_y': ex_y,
+        'brand_y': brand_y,
+        'card_h': card_h,
+    }
+
 def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase_url, output_path):
-    base = create_base_card(day_number)
     illust = create_illustration(emoji_str, word_data['korean'], word_data.get('category','명사'), custom_path, supabase_url)
     word_sec = create_word_section(word_data['korean'], word_data.get('pronunciation',''), word_data.get('meaning_khmer',''))
     example_sec = create_example_section(word_data.get('example_kr',''), word_data.get('example_khmer',''), word_data['korean'])
 
+    layout = compute_layout(illust_h=illust.size[1], word_sec_h=word_sec.size[1], example_h=example_sec.size[1])
+    print(f"  Layout: card_h={layout['card_h']}, illust_y={layout['illust_y']}, word_y={layout['word_y']}, ex_y={layout['ex_y']}, brand_y={layout['brand_y']}", file=sys.stderr)
+
+    base = create_base_card(day_number, layout['card_h'], layout['brand_y'])
+
     tmp = tempfile.mkdtemp()
     try:
-        generate_frames(base, illust, word_sec, example_sec, tmp)
+        generate_frames(base, illust, word_sec, example_sec, tmp, layout)
 
         audio_path = os.path.join(tmp, 'audio.wav')
         word_mp3 = os.path.join(tmp, 'word.mp3')
@@ -410,3 +460,42 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
         return os.path.exists(output_path)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--day', type=int, default=1)
+    parser.add_argument('--word_index', type=int, default=0)
+    parser.add_argument('--output', default='test_motion_result.png')
+    args = parser.parse_args()
+
+    if args.test:
+        # Day 1 첫 번째 단어 테스트 데이터
+        test_words = {
+            0: {"korean": "아이", "pronunciation": "[아이]", "meaning_khmer": "ក្មេង",
+                "example_kr": "아이가 웃어요.", "example_khmer": "ក្មេងកំពុងសើច។", "category": "명사"},
+        }
+        word_data = test_words.get(args.word_index, test_words[0])
+        print(f"=== Test: Day {args.day}, word '{word_data['korean']}' ===", file=sys.stderr)
+
+        get_fonts()
+        illust = create_illustration(None, word_data['korean'], word_data.get('category','명사'), None, None)
+        word_sec = create_word_section(word_data['korean'], word_data['pronunciation'], word_data['meaning_khmer'])
+        example_sec = create_example_section(word_data['example_kr'], word_data['example_khmer'], word_data['korean'])
+
+        layout = compute_layout(illust_h=illust.size[1], word_sec_h=word_sec.size[1], example_h=example_sec.size[1])
+        print(f"  Layout: {layout}", file=sys.stderr)
+
+        base = create_base_card(args.day, layout['card_h'], layout['brand_y'])
+
+        # 최종 프레임 (모든 요소 표시)
+        frame = base.copy()
+        frame.paste(illust, (30, layout['illust_y']), illust)
+        frame.paste(word_sec, (30, layout['word_y']), word_sec)
+        frame.paste(example_sec, (40, layout['ex_y']), example_sec)
+
+        out = os.path.join(ROOT_DIR, args.output)
+        frame.save(out, 'PNG')
+        print(f"  Saved: {out}", file=sys.stderr)

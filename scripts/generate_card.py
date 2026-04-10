@@ -80,9 +80,7 @@ def load_fonts():
     return fonts
 
 def generate_card(word, illustration_path, output_path, fonts):
-    W, H = 760, 1100  # 1400 → 1100 (하단 공간 줄임)
-    img = Image.new('RGBA', (W, H), '#F5F0E8')  # 베이지 배경
-    draw = ImageDraw.Draw(img)
+    W = 760
 
     index = word.get('index', 0)
     total = word.get('total', 29)
@@ -92,29 +90,67 @@ def generate_card(word, illustration_path, output_path, fonts):
     meaning_khmer = word.get('meaning_khmer', '')
     example_kr = word.get('example_kr', '')
     example_khmer = word.get('example_khmer', '')
-    
+
     # DEBUG
     print(f"  DEBUG korean: {korean}", file=sys.stderr)
     print(f"  DEBUG meaning_khmer: {meaning_khmer}", file=sys.stderr)
+
+    # ── 레이아웃 위치 계산 (위→아래) ──
+    progress_y = 50
+    bar_h = 30
+
+    # [간격1] 골드 테두리 끝 ↔ 일러스트 시작: +15px (110→125)
+    img_y = 125
+    img_size = 550
+
+    # [간격2] 일러스트 끝 ↔ 한국어 단어 시작: +30px (40→70)
+    word_y = img_y + img_size + 70
+
+    # [간격3] 한국어 단어 끝 ↔ 발음 시작: +15px (90→105)
+    pron_y = word_y + 105
+
+    # [간격4] 발음 끝 ↔ 크메르어 뜻 시작: +15px
+    pron_h = 30  # 24pt 폰트 대략 높이
+    khmer_btn_y = pron_y + pron_h + 15
+    khmer_btn_h = 70
+    khmer_end_y = khmer_btn_y + khmer_btn_h
+
+    # [간격5] 크메르어 뜻 ~ 예문 박스 ~ VERI-K 브랜드: 균등 분배
+    example_section_h = 60 + 140  # "Example" 제목 + 예문 박스
+    brand_h = 30
+    equal_gap = 50  # 세 요소 사이 균등 여백
+
+    ex_y = khmer_end_y + equal_gap
+    ex_box_y = ex_y + 60
+    ex_box_h = 140
+    ex_box_end_y = ex_box_y + ex_box_h
+
+    brand_y = ex_box_end_y + equal_gap
+    brand_text = "VERI-K"
+
+    # 카드 높이 자동 계산
+    H = brand_y + brand_h + equal_gap + 20  # 하단 여유 + 테두리
+    print(f"  Card size: {W}x{H}", file=sys.stderr)
+
+    img = Image.new('RGBA', (W, H), '#F5F0E8')  # 베이지 배경
+    draw = ImageDraw.Draw(img)
 
     # ── 카드 테두리 ──
     draw.rounded_rectangle((20, 20, W-20, H-20), 24, outline='#D4A843', width=4)
 
     # ── 프로그레스 바 ──
-    progress_y = 50
     bar_w = 300
-    bar_h = 30
     bar_x = 60
-    
+
     # 배경 바
     draw.rounded_rectangle((bar_x, progress_y, bar_x+bar_w, progress_y+bar_h), 15, fill='#E0E0E0')
-    
+
     # 진행 바 (빨강)
     progress = (index + 1) / total
     filled_w = int(bar_w * progress)
     if filled_w > 0:
         draw.rounded_rectangle((bar_x, progress_y, bar_x+filled_w, progress_y+bar_h), 15, fill='#C62828')
-    
+
     # 진행 텍스트
     progress_text = f"{index + 1}/{total}"
     draw.text((bar_x + bar_w + 20, progress_y + 5), progress_text, font=fonts['kr_b24'], fill='#C62828')
@@ -128,19 +164,17 @@ def generate_card(word, illustration_path, output_path, fonts):
     day_text_w = bb_day[2] - bb_day[0]
     day_text_h = bb_day[3] - bb_day[1]
     day_x = day_badge_x + (day_badge_w - day_text_w) // 2
-    day_y = progress_y + (bar_h - day_text_h) // 2 - bb_day[1]  # y offset 보정
+    day_y = progress_y + (bar_h - day_text_h) // 2 - bb_day[1]
     draw.text((day_x, day_y), day_text, font=fonts['kr_b20'], fill='white')
 
     # ── 일러스트 영역 ──
-    img_y = 110
-    img_size = 550  # 정사각형
     draw.rounded_rectangle((40, img_y, W-40, img_y+img_size), 20, fill='#2C2C2C')
 
     # DALL-E 일러스트 (1:1 정사각형)
     if illustration_path and os.path.exists(illustration_path):
         try:
             illust = Image.open(illustration_path).convert('RGBA')
-            illust = illust.resize((500, 500), Image.LANCZOS)  # 1:1 정사각형
+            illust = illust.resize((500, 500), Image.LANCZOS)
             ix = (W - 500) // 2
             iy = img_y + (img_size - 500) // 2
             img.paste(illust, (ix, iy), illust)
@@ -150,97 +184,80 @@ def generate_card(word, illustration_path, output_path, fonts):
 
     # ── 스피커 아이콘 (이미지 영역 안, 오른쪽 상단) ──
     speaker_size = 70
-    speaker_x = W - 40 - speaker_size - 20  # 이미지 테두리 안쪽
+    speaker_x = W - 40 - speaker_size - 20
     speaker_y = img_y + 20
     draw.ellipse((speaker_x, speaker_y, speaker_x+speaker_size, speaker_y+speaker_size), fill='#5DADE2')
-    # 스피커 이모지
     draw.text((speaker_x+18, speaker_y+18), "🔊", font=fonts['kr_b28'], fill='white')
 
     # ── 한국어 단어 ──
-    word_y = img_y + img_size + 40
     draw.text((60, word_y), korean, font=fonts['kr_b72'], fill='#1A1A1A')
-    
-    # 발음
-    draw.text((60, word_y + 90), pron, font=fonts['kr_r24'], fill='#888888')
 
-    # ── 크메르어 버튼 (오른쪽) ──
-    khmer_btn_w = 270  # 180 → 270 (1.5배)
-    khmer_btn_x = W - 60 - khmer_btn_w  # 오른쪽 끝(W-60)에서 왼쪽으로 확장
-    khmer_btn_y = word_y + 20
-    khmer_btn_h = 70
-    draw.rounded_rectangle((khmer_btn_x, khmer_btn_y, W-60, khmer_btn_y+khmer_btn_h), 12, fill='#C62828')
-    
+    # ── 발음 ──
+    draw.text((60, pron_y), pron, font=fonts['kr_r24'], fill='#888888')
+
+    # ── 크메르어 뜻 (발음 아래) ──
+    khmer_btn_w = 270
+    khmer_btn_x = 60
+    draw.rounded_rectangle((khmer_btn_x, khmer_btn_y, khmer_btn_x + khmer_btn_w, khmer_btn_y+khmer_btn_h), 12, fill='#C62828')
+
     # 텍스트 중앙 정렬
     bb_km = draw.textbbox((0,0), meaning_khmer, font=fonts['km_b42'])
     km_w = bb_km[2] - bb_km[0]
     km_h = bb_km[3] - bb_km[1]
     km_x = khmer_btn_x + (khmer_btn_w - km_w) // 2
-    km_y = khmer_btn_y + (khmer_btn_h - km_h) // 2 - bb_km[1]  # y offset 보정
+    km_y = khmer_btn_y + (khmer_btn_h - km_h) // 2 - bb_km[1]
     draw.text((km_x, km_y), meaning_khmer, font=fonts['km_b42'], fill='white')
 
     # ── EXAMPLE 섹션 ──
-    ex_y = word_y + 130  # 180 → 130 (위로 올림)
     draw.text((60, ex_y), "Example", font=fonts['kr_b32'], fill='#1A1A1A')
 
     # 예문 박스 (흰색 배경 먼저, 테두리 나중에)
-    ex_box_y = ex_y + 60
-    ex_box_h = 140  # 180 → 140 (높이 축소)
-    ex_box_padding = 8  # 테두리 안쪽 여유
-    
+    ex_box_padding = 8
+
     # 1. 흰색 배경
     draw.rounded_rectangle((60+ex_box_padding, ex_box_y+ex_box_padding, W-60-ex_box_padding, ex_box_y+ex_box_h-ex_box_padding), 16, fill='white')
-    
-    # 2. 파란 테두리 (마지막에 그려서 덮어쓰기 방지)
+
+    # 2. 파란 테두리
     draw.rounded_rectangle((60, ex_box_y, W-60, ex_box_y+ex_box_h), 16, outline='#5DADE2', width=3)
 
     # 한국어 예문
     if example_kr:
-        # 먼저 하이라이트 그리기
         if korean in example_kr:
-            # 단어 앞부분 너비 계산
             before_text = example_kr[:example_kr.find(korean)]
             before_bb = draw.textbbox((0,0), before_text, font=fonts['kr_b24'])
             before_w = before_bb[2] - before_bb[0]
-            
-            # 단어 너비 계산
+
             word_bb = draw.textbbox((0,0), korean, font=fonts['kr_b24'])
             word_w = word_bb[2] - word_bb[0]
-            
-            # 노란색 하이라이트 (박스 안쪽에만)
+
             highlight_x = 90 + before_w
-            highlight_x1 = max(highlight_x - 4, 70)  # 왼쪽 경계 (65→70)
-            highlight_x2 = min(highlight_x + word_w + 4, W - 70)  # 오른쪽 경계 (65→70)
+            highlight_x1 = max(highlight_x - 4, 70)
+            highlight_x2 = min(highlight_x + word_w + 4, W - 70)
             draw.rounded_rectangle(
                 (highlight_x1, ex_box_y+22, highlight_x2, ex_box_y+58),
                 6, fill='#FFEB3B'
             )
-        
-        # 텍스트 그리기
+
         draw.text((90, ex_box_y+25), example_kr, font=fonts['kr_b24'], fill='#1A1A1A')
 
     # 크메르어 예문
     if example_khmer:
-        # 먼저 하이라이트 그리기
         if meaning_khmer in example_khmer:
-            # 단어 앞부분 너비 계산
             before_text = example_khmer[:example_khmer.find(meaning_khmer)]
             before_bb = draw.textbbox((0,0), before_text, font=fonts['km_r22'])
             before_w = before_bb[2] - before_bb[0]
-            
-            # 단어 너비 계산
+
             word_bb = draw.textbbox((0,0), meaning_khmer, font=fonts['km_r22'])
             word_w = word_bb[2] - word_bb[0]
-            
-            # 노란색 하이라이트 (박스 안쪽에만)
+
             highlight_x = 90 + before_w
-            highlight_x1 = max(highlight_x - 4, 70)  # 왼쪽 경계
-            highlight_x2 = min(highlight_x + word_w + 4, W - 70)  # 오른쪽 경계
+            highlight_x1 = max(highlight_x - 4, 70)
+            highlight_x2 = min(highlight_x + word_w + 4, W - 70)
             draw.rounded_rectangle(
                 (highlight_x1, ex_box_y+82, highlight_x2, ex_box_y+118),
                 6, fill='#FFEB3B'
             )
-        
-        # 텍스트 그리기
+
         draw.text((90, ex_box_y+85), example_khmer, font=fonts['km_r22'], fill='#555555')
 
     # ── READ 버튼 ──
@@ -249,14 +266,19 @@ def generate_card(word, illustration_path, output_path, fonts):
     read_btn_w = 120
     read_btn_h = 55
     draw.rounded_rectangle((read_btn_x, read_btn_y, read_btn_x+read_btn_w, read_btn_y+read_btn_h), 12, fill='#C62828')
-    
-    # READ 텍스트 중앙 정렬
+
     read_bb = draw.textbbox((0,0), "READ", font=fonts['kr_b28'])
     read_w = read_bb[2] - read_bb[0]
     read_h = read_bb[3] - read_bb[1]
     read_x = read_btn_x + (read_btn_w - read_w) // 2
-    read_y = read_btn_y + (read_btn_h - read_h) // 2 - read_bb[1]  # y offset 보정
+    read_y = read_btn_y + (read_btn_h - read_h) // 2 - read_bb[1]
     draw.text((read_x, read_y), "READ", font=fonts['kr_b28'], fill='white')
+
+    # ── VERI-K 브랜드 텍스트 ──
+    bb_brand = draw.textbbox((0,0), brand_text, font=fonts['kr_b32'])
+    brand_w = bb_brand[2] - bb_brand[0]
+    brand_x = (W - brand_w) // 2
+    draw.text((brand_x, brand_y), brand_text, font=fonts['kr_b32'], fill='#D4A843')
 
     # ── 저장 ──
     img.save(output_path, 'PNG')
