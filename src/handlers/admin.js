@@ -352,10 +352,15 @@ async function handleGenerateMotion(bot, msg, dayArg) {
   await bot.sendMessage(msg.chat.id, `🎬 Starting motion card generation: ${label}...`);
 
   const { execSync } = require('child_process');
+  // python3 또는 python 자동 탐지
+  let py = 'python3';
+  try { execSync('python3 --version', { stdio: 'ignore' }); } catch {
+    try { execSync('python --version', { stdio: 'ignore' }); py = 'python'; } catch {}
+  }
   try {
     const cmd = dayArg
-      ? `python3 scripts/batch_generate_all.py ${dayArg}`
-      : 'python3 scripts/batch_generate_all.py';
+      ? `${py} scripts/batch_generate_all.py ${dayArg}`
+      : `${py} scripts/batch_generate_all.py`;
     const result = execSync(cmd, {
       timeout: 1800000,
       env: { ...process.env },

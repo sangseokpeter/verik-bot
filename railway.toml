@@ -7,6 +7,9 @@ nixPkgs = ["python3", "ffmpeg"]
 
 [deploy]
 startCommand = "pip3 install requests Pillow 2>/dev/null || pip install requests Pillow 2>/dev/null || true; npm start"
+
+[variables]
+NIXPACKS_PKGS = "python3 python3Packages.pip python3Packages.pillow python3Packages.requests"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"

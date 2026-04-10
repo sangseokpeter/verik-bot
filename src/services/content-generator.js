@@ -4,6 +4,21 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// python3 또는 python 자동 탐지
+let _pythonCmd = null;
+function getPython() {
+  if (_pythonCmd) return _pythonCmd;
+  for (const cmd of ['python3', 'python']) {
+    try {
+      execSync(`${cmd} --version`, { stdio: 'ignore' });
+      _pythonCmd = cmd;
+      return cmd;
+    } catch {}
+  }
+  _pythonCmd = 'python3';
+  return _pythonCmd;
+}
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ── DALL-E 일러스트 생성 ──
@@ -39,7 +54,7 @@ function generateCardWithPython(wordData, illustrationPath, outputPath) {
   try {
     // Python 실행 (stdout/stderr 모두 캡처)
     execSync(
-      `python3 scripts/generate_card.py '${wordJson}' '${illPath}' '${outputPath}'`,
+      `${getPython()} scripts/generate_card.py '${wordJson}' '${illPath}' '${outputPath}'`,
       { timeout: 30000, cwd: process.cwd(), stdio: 'inherit' }
     );
     
