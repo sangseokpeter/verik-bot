@@ -116,10 +116,20 @@ def generate_image_bytes(prompt: str) -> bytes:
 
     genai = _get_genai()
     model = genai.GenerativeModel(GEMINI_IMAGE_MODEL)
-    response = model.generate_content(
-        contents=prompt,
-        generation_config={'response_modalities': ['TEXT', 'IMAGE']}
-    )
+
+    # gemini-2.5-flash-image는 response_modalities=['IMAGE']를 요구한다.
+    # google-generativeai 0.8+에서는 typed GenerationConfig를 권장하고,
+    # 더 오래된 버전은 dict 형태로만 받기 때문에 먼저 typed → dict 폴백한다.
+    try:
+        gen_config = genai.types.GenerationConfig(response_modalities=['IMAGE'])
+    except (AttributeError, TypeError) as e:
+        sys.stderr.write(
+            f"  GENAI typed GenerationConfig unavailable ({type(e).__name__}: {e}), "
+            f"falling back to dict form\n"
+        )
+        gen_config = {'response_modalities': ['IMAGE']}
+
+    response = model.generate_content(prompt, generation_config=gen_config)
 
     # 응답에서 inline_data(이미지 part)를 찾는다
     for cand in getattr(response, 'candidates', []) or []:
@@ -139,8 +149,47 @@ def generate_image_bytes(prompt: str) -> bytes:
             if isinstance(data, str):
                 import base64
                 return base64.b64decode(data)
+
+    # 이미지 part가 없을 때 응답 구조를 stderr로 덤프해서 진단 가능하게 한다
+    diag_parts = []
+    try:
+        pf = getattr(response, 'prompt_feedback', None)
+        if pf is not None:
+            diag_parts.append(f"prompt_feedback={pf}")
+    except Exception:
+        pass
+    try:
+        cands = getattr(response, 'candidates', None) or []
+        diag_parts.append(f"candidates={len(cands)}")
+        for i, c in enumerate(cands):
+            fr = getattr(c, 'finish_reason', None)
+            sr = getattr(c, 'safety_ratings', None)
+            diag_parts.append(f"cand[{i}].finish_reason={fr}")
+            if sr:
+                diag_parts.append(f"cand[{i}].safety_ratings={sr}")
+            try:
+                txt = getattr(c, 'text', None)
+                if txt:
+                    diag_parts.append(f"cand[{i}].text={str(txt)[:120]!r}")
+            except Exception:
+                pass
+            try:
+                content = getattr(c, 'content', None)
+                if content is not None:
+                    parts = getattr(content, 'parts', None) or []
+                    diag_parts.append(f"cand[{i}].parts={len(parts)}")
+                    for j, p in enumerate(parts):
+                        keys = [k for k in dir(p) if not k.startswith('_')]
+                        diag_parts.append(f"cand[{i}].part[{j}].attrs={keys[:8]}")
+            except Exception:
+                pass
+    except Exception as e:
+        diag_parts.append(f"diag_error={e}")
+
+    diag = ' | '.join(str(d) for d in diag_parts)[:600]
+    sys.stderr.write(f"  GEMINI no-image response diagnostics: {diag}\n")
     raise RuntimeError(
-        "No image part in Gemini response (model may not support image output)"
+        f"No image part in Gemini response (model={GEMINI_IMAGE_MODEL}). {diag}"[:500]
     )
 
 
@@ -164,20 +213,48 @@ def public_url_for(storage_path: str) -> str:
     return f"{SUPABASE_URL}/storage/v1/object/public/word-cards/{storage_path}"
 
 
+SUPABASE_BUCKET = os.environ.get('SUPABASE_BUCKET', 'word-cards')
+
+
 def upload_to_storage(png_bytes: bytes, storage_path: str) -> bool:
-    """word-cards 버킷에 PNG 업로드 (upsert)."""
+    """Storage 버킷에 PNG 업로드 (upsert).
+    실패 시 bucket / path / status / body를 stderr에 자세히 로그한다."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_URL or SUPABASE_KEY is missing")
 
-    url = f"{SUPABASE_URL}/storage/v1/object/word-cards/{storage_path}"
+    bucket = SUPABASE_BUCKET
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{storage_path}"
     headers = {
         'apikey': SUPABASE_KEY,
         'Authorization': f'Bearer {SUPABASE_KEY}',
         'Content-Type': 'image/png',
         'x-upsert': 'true',
     }
-    r = requests.post(url, headers=headers, data=png_bytes, timeout=60)
-    return r.status_code in (200, 201)
+
+    sys.stderr.write(
+        f"  STORAGE upload bucket={bucket} path={storage_path} "
+        f"bytes={len(png_bytes)}\n"
+    )
+
+    try:
+        r = requests.post(url, headers=headers, data=png_bytes, timeout=60)
+    except requests.exceptions.RequestException as e:
+        sys.stderr.write(
+            f"  STORAGE upload network error bucket={bucket} path={storage_path} "
+            f"err={type(e).__name__}: {str(e)[:200]}\n"
+        )
+        return False
+
+    if r.status_code in (200, 201):
+        sys.stderr.write(f"  STORAGE upload OK status={r.status_code}\n")
+        return True
+
+    body = (r.text or '')[:300]
+    sys.stderr.write(
+        f"  STORAGE upload FAILED bucket={bucket} path={storage_path} "
+        f"status={r.status_code} body={body}\n"
+    )
+    return False
 
 
 def update_word_image_url(word_id: str, image_url: str) -> bool:
