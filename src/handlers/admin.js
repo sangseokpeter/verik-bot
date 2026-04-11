@@ -367,6 +367,30 @@ async function handleGenerateMotion(bot, msg, dayArg) {
       cwd: require('path').resolve(__dirname, '../..')
     });
     await bot.sendMessage(msg.chat.id, `✅ Motion card generation complete!\n${result.toString().split('\n').slice(-3).join('\n')}`);
+
+    // ── 샘플 카드 미리보기: Day N 첫 번째 단어 MP4 전송 ──
+    try {
+      const sampleDay = dayArg ? Number(dayArg) : 1;
+      const { data: sampleWord, error: sampleErr } = await supabase
+        .from('words')
+        .select('korean, meaning_khmer, video_url, sort_order')
+        .eq('day_number', sampleDay)
+        .order('sort_order', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (sampleErr || !sampleWord) {
+        await bot.sendMessage(msg.chat.id, `⚠️ 샘플 미리보기 불러오기 실패: ${sampleErr?.message || 'no word found'}`);
+      } else if (!sampleWord.video_url) {
+        await bot.sendMessage(msg.chat.id, `⚠️ Day ${sampleDay} 첫 번째 단어(${sampleWord.korean})에 video_url이 없습니다.`);
+      } else {
+        await bot.sendVideo(msg.chat.id, sampleWord.video_url, {
+          caption: `📱 샘플 카드 미리보기 - Day ${sampleDay} 첫 번째 단어\n${sampleWord.korean} (${sampleWord.meaning_khmer})`
+        });
+      }
+    } catch (previewErr) {
+      await bot.sendMessage(msg.chat.id, `⚠️ 샘플 미리보기 전송 오류: ${previewErr.message}`);
+    }
   } catch (err) {
     await bot.sendMessage(msg.chat.id, `❌ Error: ${err.stderr?.toString()?.slice(-200) || err.message}`);
   }
