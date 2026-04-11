@@ -382,6 +382,28 @@ function adminChatId(fallbackChatId) {
   return fallbackChatId;
 }
 
+// 텔레그램 그룹 rate-limit 회피용 사진 전송 간격 (ms)
+const IMAGE_SEND_DELAY_MS = 500;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// 사진 한 장을 어드민 채팅에 전송 + 사이 간격 추가
+async function sendImagePreview(bot, chatId, ev, tag) {
+  const captionTag = tag ? ` ${tag}` : '';
+  const caption = `[${ev.sort}/${ev.total}]${captionTag} ${ev.korean} (${ev.meaning_khmer || ''})`;
+  if (!ev.url) {
+    await bot.sendMessage(chatId, `${caption}\n(no image_url)`);
+    await sleep(IMAGE_SEND_DELAY_MS);
+    return;
+  }
+  try {
+    await bot.sendPhoto(chatId, ev.url, { caption });
+  } catch (e) {
+    await bot.sendMessage(chatId, `${caption}\n${ev.url}\n(photo send failed: ${e.message})`);
+  }
+  // 텔레그램 그룹 rate-limit 회피
+  await sleep(IMAGE_SEND_DELAY_MS);
+}
+
 async function handleImageEvent(bot, chatId, day, ev) {
   const state = imageReviewState.get(day) || {
     chatId, status: 'generating', total: 0, ok: 0, skipped: 0, failed: 0
@@ -412,20 +434,17 @@ async function handleImageEvent(bot, chatId, day, ev) {
     case 'img': {
       state.ok = (state.ok || 0) + 1;
       imageReviewState.set(day, state);
-      const caption = `[${ev.sort}/${ev.total}] ${ev.korean} (${ev.meaning_khmer || ''})`;
-      try {
-        await bot.sendPhoto(chatId, ev.url, { caption });
-      } catch (e) {
-        await bot.sendMessage(chatId, `${caption}\n${ev.url}\n(photo send failed: ${e.message})`);
-      }
+      await sendImagePreview(bot, chatId, ev, '🆕');
       return;
     }
 
-    case 'skip':
+    case 'skip': {
       state.skipped = (state.skipped || 0) + 1;
       imageReviewState.set(day, state);
-      // 너무 시끄러우니 개별 알림은 생략 (요약에 포함됨)
+      // 기존 image_url을 미리보기로 전송 (어드민이 이전 결과를 함께 검수할 수 있도록)
+      await sendImagePreview(bot, chatId, ev, '♻️');
       return;
+    }
 
     case 'fail':
       state.failed = (state.failed || 0) + 1;
