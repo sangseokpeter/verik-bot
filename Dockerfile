@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
 RUN pip3 install requests Pillow --break-system-packages
 
 WORKDIR /app
+COPY requirements.txt ./
+RUN pip3 install -r requirements.txt --break-system-packages
 COPY package*.json ./
 RUN npm install
 COPY . .

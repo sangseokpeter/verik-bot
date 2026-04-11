@@ -396,6 +396,276 @@ async function handleGenerateMotion(bot, msg, dayArg) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Gemini 이미지 생성 + 어드민 검수 플로우
+// ═══════════════════════════════════════════════════════════════════
+//
+// /generate_images N      Day N의 단어 전체에 대해 Gemini로 이미지 생성
+//                         (이미 image_url이 있는 단어는 자동으로 건너뜀)
+// /approve_images N       Day N 검수 승인 → Day N+1 자동 시작
+// /redo_image N 단어명    Day N의 특정 단어만 재생성
+// /image_status           전체 Day별 진행 현황
+//
+// 통신: Python 배치 스크립트가 stdout에 JSON 라인 이벤트를 출력하면
+//       Node.js가 line-by-line으로 파싱해서 텔레그램에 sendPhoto/sendMessage 한다.
+// 상태 보관: in-memory Map (봇 재시작 시 초기화). "approved"만 메모리에 두고,
+//           나머지 진행률은 매 호출 때 Supabase에서 계산한다.
+//
+const imageReviewState = new Map();
+// dayNumber -> { chatId, status, total, ok, skipped, failed }
+
+function detectPython() {
+  const { execSync } = require('child_process');
+  try { execSync('python3 --version', { stdio: 'ignore' }); return 'python3'; } catch {}
+  try { execSync('python --version', { stdio: 'ignore' }); return 'python'; } catch {}
+  return 'python3';
+}
+
+// 어드민 그룹 chat_id (env var로 별도 지정 가능). 미설정 시 명령어 발행 채팅으로 폴백.
+function adminChatId(fallbackChatId) {
+  const envId = process.env.ADMIN_CHAT_ID;
+  if (envId && /^-?\d+$/.test(envId.trim())) return Number(envId.trim());
+  return fallbackChatId;
+}
+
+async function handleImageEvent(bot, chatId, day, ev) {
+  const state = imageReviewState.get(day) || {
+    chatId, status: 'generating', total: 0, ok: 0, skipped: 0, failed: 0
+  };
+
+  switch (ev.type) {
+    case 'config_error':
+      await bot.sendMessage(chatId, `❌ Config error: ${ev.message}`);
+      return;
+
+    case 'no_words':
+      await bot.sendMessage(chatId, `⚠️ Day ${day}에 단어가 없습니다.`);
+      return;
+
+    case 'start':
+      state.total = ev.total || 0;
+      state.ok = 0;
+      state.skipped = 0;
+      state.failed = 0;
+      state.status = 'generating';
+      imageReviewState.set(day, state);
+      await bot.sendMessage(
+        chatId,
+        `📋 Day ${day}: 총 ${state.total}개 단어 (생성 대상 ${ev.to_generate || state.total}개)`
+      );
+      return;
+
+    case 'img': {
+      state.ok = (state.ok || 0) + 1;
+      imageReviewState.set(day, state);
+      const caption = `[${ev.sort}/${ev.total}] ${ev.korean} (${ev.meaning_khmer || ''})`;
+      try {
+        await bot.sendPhoto(chatId, ev.url, { caption });
+      } catch (e) {
+        await bot.sendMessage(chatId, `${caption}\n${ev.url}\n(이미지 전송 실패: ${e.message})`);
+      }
+      return;
+    }
+
+    case 'skip':
+      state.skipped = (state.skipped || 0) + 1;
+      imageReviewState.set(day, state);
+      // 너무 시끄러우니 개별 알림은 생략 (요약에 포함됨)
+      return;
+
+    case 'fail':
+      state.failed = (state.failed || 0) + 1;
+      imageReviewState.set(day, state);
+      await bot.sendMessage(
+        chatId,
+        `⚠️ [${ev.sort}/${ev.total}] ${ev.korean}: ${ev.reason}`.slice(0, 400)
+      );
+      return;
+
+    case 'done':
+      state.ok = ev.ok || 0;
+      state.skipped = ev.skipped || 0;
+      state.failed = ev.failed || 0;
+      state.total = ev.total || state.total;
+      imageReviewState.set(day, state);
+      return;
+  }
+}
+
+function spawnImageBatch(bot, chatId, day, koreanFilter) {
+  const { spawn } = require('child_process');
+  const py = detectPython();
+  const cwd = require('path').resolve(__dirname, '../..');
+
+  const args = ['scripts/batch_generate_images.py', String(day)];
+  if (koreanFilter) args.push(koreanFilter);
+
+  const child = spawn(py, args, { cwd, env: { ...process.env } });
+
+  let buffer = '';
+  child.stdout.on('data', async (chunk) => {
+    buffer += chunk.toString();
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let ev;
+      try {
+        ev = JSON.parse(trimmed);
+      } catch {
+        // 일반 stderr 누락이나 비-JSON 출력은 로그로만 남김
+        console.log(`[gen_images day=${day}] ${trimmed}`);
+        continue;
+      }
+      try {
+        await handleImageEvent(bot, chatId, day, ev);
+      } catch (err) {
+        console.error('image event handler error:', err.message);
+      }
+    }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    console.error(`[gen_images day=${day}]`, chunk.toString());
+  });
+
+  return new Promise((resolve) => {
+    child.on('close', (code) => resolve(code));
+  });
+}
+
+// ── /generate_images N ──
+async function handleGenerateImages(bot, msg, dayArg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+  if (!dayArg) {
+    return bot.sendMessage(msg.chat.id, '사용법: /generate_images <day>');
+  }
+  const day = parseInt(dayArg, 10);
+  if (isNaN(day) || day < 1) {
+    return bot.sendMessage(msg.chat.id, '❌ Day는 양의 정수여야 합니다.');
+  }
+
+  const chatId = adminChatId(msg.chat.id);
+  imageReviewState.set(day, {
+    chatId, status: 'generating', total: 0, ok: 0, skipped: 0, failed: 0
+  });
+
+  await bot.sendMessage(chatId, `🎨 Day ${day} 이미지 생성 시작...`);
+
+  const code = await spawnImageBatch(bot, chatId, day, null);
+  const state = imageReviewState.get(day) || { ok: 0, skipped: 0, failed: 0, total: 0 };
+
+  if (code === 0) {
+    state.status = 'awaiting_review';
+    imageReviewState.set(day, state);
+    const summary =
+      `✅ Day ${day} 이미지 생성 완료 (${state.ok + state.skipped}/${state.total})\n` +
+      `   생성: ${state.ok} · 건너뜀: ${state.skipped} · 실패: ${state.failed}\n\n` +
+      `승인: /approve_images ${day}\n` +
+      `재생성: /redo_image ${day} 단어명`;
+    await bot.sendMessage(chatId, summary);
+  } else {
+    state.status = 'error';
+    imageReviewState.set(day, state);
+    await bot.sendMessage(chatId, `❌ Day ${day} 생성 실패 (exit ${code})`);
+  }
+}
+
+// ── /approve_images N ──
+async function handleApproveImages(bot, msg, dayArg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+  if (!dayArg) {
+    return bot.sendMessage(msg.chat.id, '사용법: /approve_images <day>');
+  }
+  const day = parseInt(dayArg, 10);
+  if (isNaN(day) || day < 1) {
+    return bot.sendMessage(msg.chat.id, '❌ Day는 양의 정수여야 합니다.');
+  }
+
+  const chatId = adminChatId(msg.chat.id);
+  const state = imageReviewState.get(day) || {
+    chatId, status: 'approved', total: 0, ok: 0, skipped: 0, failed: 0
+  };
+  state.status = 'approved';
+  imageReviewState.set(day, state);
+
+  await bot.sendMessage(chatId, `✅ Day ${day} 승인 완료\n→ Day ${day + 1} 자동 시작`);
+  return handleGenerateImages(bot, msg, String(day + 1));
+}
+
+// ── /redo_image N 단어명 ──
+async function handleRedoImage(bot, msg, dayArg, koreanWord) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+  if (!dayArg || !koreanWord) {
+    return bot.sendMessage(msg.chat.id, '사용법: /redo_image <day> <단어>');
+  }
+  const day = parseInt(dayArg, 10);
+  if (isNaN(day) || day < 1) {
+    return bot.sendMessage(msg.chat.id, '❌ Day는 양의 정수여야 합니다.');
+  }
+
+  const chatId = adminChatId(msg.chat.id);
+  await bot.sendMessage(chatId, `🔄 Day ${day} "${koreanWord}" 재생성 중...`);
+
+  const code = await spawnImageBatch(bot, chatId, day, koreanWord);
+  if (code === 0) {
+    await bot.sendMessage(chatId, `✅ "${koreanWord}" 재생성 완료`);
+  } else {
+    await bot.sendMessage(chatId, `❌ 재생성 실패 (exit ${code})`);
+  }
+}
+
+// ── /image_status ──
+async function handleImageStatus(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const { data, error } = await supabase
+    .from('words')
+    .select('day_number, image_url');
+
+  if (error || !data) {
+    return bot.sendMessage(msg.chat.id, `❌ 조회 실패: ${error?.message || 'no data'}`);
+  }
+
+  const byDay = new Map();
+  for (const w of data) {
+    const d = w.day_number;
+    if (!byDay.has(d)) byDay.set(d, { total: 0, withImg: 0 });
+    const stats = byDay.get(d);
+    stats.total++;
+    if (w.image_url && w.image_url !== 'skip') stats.withImg++;
+  }
+
+  const sortedDays = [...byDay.keys()].sort((a, b) => a - b);
+  let report = '📊 이미지 진행 현황\n';
+  for (const d of sortedDays) {
+    const { total, withImg } = byDay.get(d);
+    let mark = '⬜';
+    if (total > 0 && withImg === total) mark = '✅';
+    else if (withImg > 0) mark = '🟡';
+
+    const state = imageReviewState.get(d);
+    let suffix = '';
+    if (state?.status === 'approved') suffix = ' [승인됨]';
+    else if (state?.status === 'awaiting_review') suffix = ' [검수대기]';
+    else if (state?.status === 'generating') suffix = ' [생성중]';
+    else if (state?.status === 'error') suffix = ' [에러]';
+
+    report += `${mark} Day ${d}: ${withImg}/${total}${suffix}\n`;
+  }
+
+  await bot.sendMessage(msg.chat.id, report);
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -407,6 +677,10 @@ module.exports = {
   handleReply,
   handleStats,
   handleGenerateMotion,
+  handleGenerateImages,
+  handleApproveImages,
+  handleRedoImage,
+  handleImageStatus,
   isAdmin,
   ADMIN_IDS
 };
