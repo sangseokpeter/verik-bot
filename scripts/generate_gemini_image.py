@@ -2,21 +2,24 @@
 """
 Generate a single Korean vocabulary illustration via Gemini.
 
-NOTE on the model:
+SDK:
+  Uses google-genai (the current official Google GenAI SDK).
+  The older google-generativeai package was deprecated upstream.
+
+Model:
   Text-only Flash variants (1.5 Flash, 2.0 Flash, etc.) cannot
   produce images. We use gemini-2.5-flash-image, the current stable
   Gemini image-generation model (free tier: ~500 images/day).
-  The earlier preview alias gemini-2.0-flash-exp-image-generation
-  has been retired and now returns 404.
   Override with the GEMINI_IMAGE_MODEL env var if needed.
 
 Required env vars:
   GEMINI_API_KEY        - Google AI Studio API key
   SUPABASE_URL          - Supabase project URL
   SUPABASE_KEY (or SUPABASE_SECRET_KEY) - service role key for upload+update
+  SUPABASE_BUCKET       - optional, defaults to 'word-cards'
 
 CLI usage:
-  python generate_gemini_image.py <word_id> <day> <sort_order> <korean> <meaning_khmer> <category>
+  python generate_gemini_image.py <word_id> <day> <sort_order> <korean> [meaning_khmer] [category]
 
 This script also exposes functions used by batch_generate_images.py.
 """
@@ -35,18 +38,23 @@ GEMINI_IMAGE_MODEL = os.environ.get(
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', os.environ.get('SUPABASE_SECRET_KEY', ''))
 
-# google-generativeai는 lazy import — SDK가 없어도 모듈 import는 가능해야
-# storage 함수와 build_prompt를 다른 곳에서 재사용할 수 있다.
-_genai = None
+# google-genai (new official SDK) — lazy import so the module can still
+# be imported (for storage helpers / build_prompt) even when the SDK
+# isn't installed locally.
+_genai_client = None
+_genai_types = None
 
-def _get_genai():
-    global _genai
-    if _genai is None:
-        import google.generativeai as genai  # noqa: WPS433
-        if GEMINI_API_KEY:
-            genai.configure(api_key=GEMINI_API_KEY)
-        _genai = genai
-    return _genai
+def _get_genai_client():
+    """Return (client, types) for the google-genai SDK, lazily initialized."""
+    global _genai_client, _genai_types
+    if _genai_client is None:
+        from google import genai  # noqa: WPS433
+        from google.genai import types as genai_types  # noqa: WPS433
+        if not GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY is not set")
+        _genai_client = genai.Client(api_key=GEMINI_API_KEY)
+        _genai_types = genai_types
+    return _genai_client, _genai_types
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -110,26 +118,16 @@ def build_prompt(korean: str, meaning_khmer: str, category: str = '') -> str:
 # Gemini 호출
 # ─────────────────────────────────────────────────────────────────────
 def generate_image_bytes(prompt: str) -> bytes:
-    """Gemini SDK로 이미지 생성. PNG bytes 반환."""
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is not set")
+    """google-genai SDK로 이미지 생성. PNG bytes 반환."""
+    client, types = _get_genai_client()
 
-    genai = _get_genai()
-    model = genai.GenerativeModel(GEMINI_IMAGE_MODEL)
-
-    # gemini-2.5-flash-image는 response_modalities=['IMAGE']를 요구한다.
-    # google-generativeai 0.8+에서는 typed GenerationConfig를 권장하고,
-    # 더 오래된 버전은 dict 형태로만 받기 때문에 먼저 typed → dict 폴백한다.
-    try:
-        gen_config = genai.types.GenerationConfig(response_modalities=['IMAGE'])
-    except (AttributeError, TypeError) as e:
-        sys.stderr.write(
-            f"  GENAI typed GenerationConfig unavailable ({type(e).__name__}: {e}), "
-            f"falling back to dict form\n"
-        )
-        gen_config = {'response_modalities': ['IMAGE']}
-
-    response = model.generate_content(prompt, generation_config=gen_config)
+    response = client.models.generate_content(
+        model=GEMINI_IMAGE_MODEL,
+        contents=[prompt],
+        config=types.GenerateContentConfig(
+            response_modalities=['IMAGE'],
+        ),
+    )
 
     # 응답에서 inline_data(이미지 part)를 찾는다
     for cand in getattr(response, 'candidates', []) or []:
@@ -168,17 +166,14 @@ def generate_image_bytes(prompt: str) -> bytes:
             if sr:
                 diag_parts.append(f"cand[{i}].safety_ratings={sr}")
             try:
-                txt = getattr(c, 'text', None)
-                if txt:
-                    diag_parts.append(f"cand[{i}].text={str(txt)[:120]!r}")
-            except Exception:
-                pass
-            try:
                 content = getattr(c, 'content', None)
                 if content is not None:
                     parts = getattr(content, 'parts', None) or []
                     diag_parts.append(f"cand[{i}].parts={len(parts)}")
                     for j, p in enumerate(parts):
+                        text = getattr(p, 'text', None)
+                        if text:
+                            diag_parts.append(f"cand[{i}].part[{j}].text={str(text)[:120]!r}")
                         keys = [k for k in dir(p) if not k.startswith('_')]
                         diag_parts.append(f"cand[{i}].part[{j}].attrs={keys[:8]}")
             except Exception:
