@@ -105,13 +105,26 @@ async function sendVideoLinks(bot) {
 
       const currentDay = calcCurrentDay(student.start_date);
 
-      const { data: videos } = await supabase
+      const { data: rawVideos } = await supabase
         .from('videos')
         .select('*')
         .eq('day_number', currentDay)
         .order('sort_order');
 
-      if (!videos || videos.length === 0) continue;
+      if (!rawVideos || rawVideos.length === 0) continue;
+
+      // youtube_url 기준 중복 제거 (DB에 동일 영상이 여러 row로 있어도 한 번만 전송)
+      const seen = new Set();
+      const videos = [];
+      for (const v of rawVideos) {
+        if (!v.youtube_url || seen.has(v.youtube_url)) continue;
+        seen.add(v.youtube_url);
+        videos.push(v);
+      }
+
+      if (rawVideos.length !== videos.length) {
+        console.log(`  Dedup videos for day ${currentDay}: ${rawVideos.length} -> ${videos.length}`);
+      }
 
       // 크메르어 메시지
       let videoText = `🎬 វីដេអូមេរៀនថ្ងៃនេះ!\n(오늘의 강의 영상)\n\n`;
