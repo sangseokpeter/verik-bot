@@ -233,6 +233,38 @@ def create_word_section(korean, pronunciation, khmer):
     draw.text(((area_w-tw3)//2, khmer_y), khmer, fill=TEXT_KHMER, font=fonts['khmer_big'])
     return img
 
+def find_highlight_span(example_kr, keyword):
+    """예문에서 하이라이트할 구간(start, end)을 찾는다.
+    1) 정확 일치
+    2) 동사/형용사(~다로 끝남): 어간 + 뒤에 붙은 어미까지 매칭
+    3) 키워드 첫 음절 매칭 (마지막 폴백)
+    """
+    if not example_kr or not keyword:
+        return None
+    # 1) 정확 일치
+    idx = example_kr.find(keyword)
+    if idx >= 0:
+        return (idx, idx + len(keyword))
+    # 2) 동사/형용사: '다'로 끝나면 어간으로 검색
+    if keyword.endswith('다') and len(keyword) > 1:
+        stem = keyword[:-1]  # '가다'→'가', '먹다'→'먹'
+        idx = example_kr.find(stem)
+        if idx >= 0:
+            end = idx + len(stem)
+            # 어간 뒤의 활용형(구두점/공백 전까지) 포함
+            while end < len(example_kr) and example_kr[end] not in ' .,!?\n。':
+                end += 1
+            return (idx, end)
+    # 3) 첫 음절만 매칭 (최후의 폴백)
+    if len(keyword) >= 1:
+        idx = example_kr.find(keyword[0])
+        if idx >= 0:
+            end = idx + 1
+            while end < len(example_kr) and example_kr[end] not in ' .,!?\n。':
+                end += 1
+            return (idx, end)
+    return None
+
 def create_example_section(example_kr, example_khmer, keyword):
     fonts = get_fonts()
     box_w, box_h = W-80, 180
@@ -241,15 +273,34 @@ def create_example_section(example_kr, example_khmer, keyword):
     draw.rounded_rectangle((0,0,box_w,box_h), radius=12, fill=WHITE_BOX, outline="#E0D8C8", width=1)
     draw.text((18,12), "Example", fill="#777777", font=fonts['label'])
 
-    if keyword and example_kr and keyword in example_kr:
-        kw_bbox = draw.textbbox((20,55), keyword, font=fonts['ex'])
-        kw_w = kw_bbox[2]-kw_bbox[0]
-        kw_h = kw_bbox[3]-kw_bbox[1]
-        draw.rounded_rectangle((14,52, 14+kw_w+12, 52+kw_h+10), radius=6, fill=HIGHLIGHT_BG)
-        draw.text((20,55), keyword, fill=TEXT_DARK, font=fonts['ex'])
-        rest = example_kr.split(keyword, 1)
-        if len(rest) > 1:
-            draw.text((20+kw_w+4, 55), rest[1], fill=TEXT_DARK, font=fonts['ex'])
+    span = find_highlight_span(example_kr, keyword) if example_kr else None
+
+    if span:
+        before = example_kr[:span[0]]
+        matched = example_kr[span[0]:span[1]]
+        after = example_kr[span[1]:]
+
+        # 너비 계산 (원점 기준)
+        before_w = draw.textbbox((0,0), before, font=fonts['ex'])[2] if before else 0
+        matched_bb = draw.textbbox((0,0), matched, font=fonts['ex'])
+        matched_w = matched_bb[2] - matched_bb[0]
+        matched_h = matched_bb[3] - matched_bb[1]
+
+        # 앞쪽 텍스트 (키워드 앞) 그리기
+        if before:
+            draw.text((20, 55), before, fill=TEXT_DARK, font=fonts['ex'])
+
+        # 하이라이트 박스 + 키워드
+        hl_x = 20 + before_w
+        draw.rounded_rectangle(
+            (hl_x - 6, 52, hl_x + matched_w + 6, 52 + matched_h + 10),
+            radius=6, fill=HIGHLIGHT_BG
+        )
+        draw.text((hl_x, 55), matched, fill=TEXT_DARK, font=fonts['ex'])
+
+        # 뒤쪽 텍스트
+        if after:
+            draw.text((hl_x + matched_w, 55), after, fill=TEXT_DARK, font=fonts['ex'])
     else:
         draw.text((20,55), example_kr or "", fill=TEXT_DARK, font=fonts['ex'])
 
