@@ -196,17 +196,20 @@ def generate_image_bytes(prompt: str) -> bytes:
 # ─────────────────────────────────────────────────────────────────────
 # Supabase Storage / DB
 # ─────────────────────────────────────────────────────────────────────
-_SAFE_CHARS = re.compile(r'[^0-9A-Za-z._\-가-힣]')
+_SAFE_CHARS = re.compile(r'[^0-9A-Za-z._\-]')
 
 def sanitize_path_segment(s: str) -> str:
-    """Supabase Storage 경로에 안전한 문자만 남김 (한글은 보존)."""
+    """Supabase Storage 경로에 안전한 ASCII 문자만 남김.
+    Supabase Storage는 한글/유니코드 파일명을 허용하지 않으므로
+    영문/숫자/언더스코어/하이픈/점 외 문자는 모두 _로 치환한다."""
     cleaned = _SAFE_CHARS.sub('_', s)
     return cleaned or 'word'
 
 
-def storage_path_for(day_number: int, sort_order: int, korean: str) -> str:
-    safe = sanitize_path_segment(korean)
-    return f"illustrations/{day_number}_{sort_order}_{safe}.png"
+def storage_path_for(day_number: int, sort_order: int, korean: str = '') -> str:
+    """Storage 파일 경로. Supabase가 한글 파일명을 거부하므로 day/sort_order만 사용.
+    korean 인자는 호환을 위해 남겨두지만 경로에는 포함하지 않는다."""
+    return f"illustrations/{day_number}_{sort_order}.png"
 
 
 def public_url_for(storage_path: str) -> str:
