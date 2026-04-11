@@ -46,6 +46,7 @@ def upload_to_storage(filepath, storage_path):
     return r.status_code in (200, 201)
 
 def update_video_url(word_id, video_url):
+    """DB의 words.video_url 업데이트. 성공 여부를 반환하고 로그 출력."""
     url = f'{SUPABASE_URL}/rest/v1/words?id=eq.{word_id}'
     headers = {
         'apikey': SUPABASE_KEY,
@@ -53,7 +54,18 @@ def update_video_url(word_id, video_url):
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal'
     }
-    requests.patch(url, headers=headers, json={'video_url': video_url}, timeout=10)
+    try:
+        r = requests.patch(url, headers=headers, json={'video_url': video_url}, timeout=10)
+        if r.status_code in (200, 204):
+            print(f"  DB UPDATE OK: word_id={word_id} video_url set")
+            return True
+        else:
+            body = (r.text or '')[:200]
+            print(f"  DB UPDATE FAIL: word_id={word_id} status={r.status_code} body={body}")
+            return False
+    except Exception as e:
+        print(f"  DB UPDATE ERROR: word_id={word_id} {type(e).__name__}: {str(e)[:150]}")
+        return False
 
 def main():
     target_day = int(sys.argv[1]) if len(sys.argv) > 1 else None
@@ -114,9 +126,13 @@ def main():
                     uploaded = upload_to_storage(output_path, storage_path)
                     if uploaded:
                         public_url = f'{SUPABASE_URL}/storage/v1/object/public/word-cards/{storage_path}'
-                        update_video_url(wid, public_url)
-                        done += 1
-                        ok = True
+                        db_ok = update_video_url(wid, public_url)
+                        if db_ok:
+                            print(f"  OK: {key} {korean} -> {public_url}")
+                            done += 1
+                            ok = True
+                        else:
+                            print(f"  DB UPDATE FAIL: {key} {korean} (attempt {attempt+1})")
                     else:
                         print(f"  UPLOAD FAIL: {key} {korean} (attempt {attempt+1})")
                     try:
