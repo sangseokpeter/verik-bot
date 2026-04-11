@@ -51,18 +51,57 @@ def _get_genai():
 # ─────────────────────────────────────────────────────────────────────
 # 프롬프트
 # ─────────────────────────────────────────────────────────────────────
+_NOUN_CATEGORIES = {'명사', 'noun', 'Noun', 'NOUN'}
+_VERB_CATEGORIES = {'동사', 'verb', 'Verb', 'VERB'}
+_ADJ_CATEGORIES = {
+    '형용사', 'adjective', 'Adjective', 'ADJECTIVE',
+    '부사', 'adverb', 'Adverb',  # adverbs use the same visual-metaphor approach
+}
+
+# 단어의 영어 의미를 표현하기 위한 슬롯. DB에 영어 컬럼이 없으므로
+# Korean + Khmer를 함께 넣어 Gemini가 의미를 추론하게 한다. 동음이의어
+# (배=ship/stomach/pear, 눈=eye/snow 등)는 Khmer 뜻이 결정 기준이 된다.
+def _meaning_slot(korean: str, meaning_khmer: str) -> str:
+    if meaning_khmer:
+        return f'"{korean}" (Khmer meaning: {meaning_khmer})'
+    return f'"{korean}"'
+
+
+_BASE_TAIL = (
+    "on white background, Duolingo style, no text, no labels, "
+    "clean minimal design, 512x512"
+)
+
+
 def build_prompt(korean: str, meaning_khmer: str, category: str = '') -> str:
-    """동음이의어 구분을 위해 korean + meaning_khmer + category를 모두 사용.
-    예) 배: ship/stomach/pear → meaning_khmer가 다르므로 올바른 그림 유도.
+    """카테고리(명사/동사/형용사)에 따라 다른 프롬프트 템플릿을 적용한다.
+    동음이의어 처리는 korean + meaning_khmer 조합으로 수행 (DB에 영어 컬럼 없음).
     """
+    meaning = _meaning_slot(korean, meaning_khmer)
+    cat = (category or '').strip()
+
+    if cat in _VERB_CATEGORIES:
+        # 동사: 사람이 그 행동을 하고 있는 장면
+        return (
+            f"A simple flat vector illustration showing a person performing "
+            f"the action of {meaning}, action-focused scene, {_BASE_TAIL}. "
+            f"Draw ONLY the action that matches the Khmer meaning above."
+        )
+
+    if cat in _ADJ_CATEGORIES:
+        # 형용사/부사: 상태나 비교를 시각적 메타포로
+        return (
+            f"A simple flat vector illustration visually demonstrating "
+            f"the concept of {meaning}, using comparison or visual metaphor "
+            f"to convey the state or quality, {_BASE_TAIL}. "
+            f"Draw ONLY the concept that matches the Khmer meaning above."
+        )
+
+    # 기본값: 명사 (사물/장소/사람 자체를 명확하게)
     return (
-        "Simple flat vector illustration for a Korean vocabulary flashcard.\n"
-        f"Korean word: {korean}\n"
-        f"Khmer meaning: {meaning_khmer}\n"
-        f"Category: {category}\n\n"
-        "Draw ONLY the concept that matches the Khmer meaning above.\n"
-        "Duolingo flat style, white background, absolutely no text or letters,\n"
-        "clean and colorful."
+        f"A simple flat vector illustration of {meaning}, centered "
+        f"{_BASE_TAIL}. Draw ONLY the object/place/person that matches "
+        f"the Khmer meaning above."
     )
 
 

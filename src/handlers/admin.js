@@ -404,7 +404,8 @@ async function sendImagePreview(bot, chatId, ev, tag) {
   await sleep(IMAGE_SEND_DELAY_MS);
 }
 
-async function handleImageEvent(bot, chatId, day, ev) {
+async function handleImageEvent(bot, chatId, day, ev, opts = {}) {
+  const silent = !!opts.silent;
   const state = imageReviewState.get(day) || {
     chatId, status: 'generating', total: 0, ok: 0, skipped: 0, failed: 0
   };
@@ -415,7 +416,7 @@ async function handleImageEvent(bot, chatId, day, ev) {
       return;
 
     case 'no_words':
-      await bot.sendMessage(chatId, `⚠️ No words found for Day ${day}.`);
+      if (!silent) await bot.sendMessage(chatId, `⚠️ No words found for Day ${day}.`);
       return;
 
     case 'start':
@@ -425,16 +426,18 @@ async function handleImageEvent(bot, chatId, day, ev) {
       state.failed = 0;
       state.status = 'generating';
       imageReviewState.set(day, state);
-      await bot.sendMessage(
-        chatId,
-        `📋 Day ${day}: ${state.total} words total (${ev.to_generate || state.total} to generate)`
-      );
+      if (!silent) {
+        await bot.sendMessage(
+          chatId,
+          `📋 Day ${day}: ${state.total} words total (${ev.to_generate || state.total} to generate)`
+        );
+      }
       return;
 
     case 'img': {
       state.ok = (state.ok || 0) + 1;
       imageReviewState.set(day, state);
-      await sendImagePreview(bot, chatId, ev, '🆕');
+      if (!silent) await sendImagePreview(bot, chatId, ev, '🆕');
       return;
     }
 
@@ -442,17 +445,19 @@ async function handleImageEvent(bot, chatId, day, ev) {
       state.skipped = (state.skipped || 0) + 1;
       imageReviewState.set(day, state);
       // 기존 image_url을 미리보기로 전송 (어드민이 이전 결과를 함께 검수할 수 있도록)
-      await sendImagePreview(bot, chatId, ev, '♻️');
+      if (!silent) await sendImagePreview(bot, chatId, ev, '♻️');
       return;
     }
 
     case 'fail':
       state.failed = (state.failed || 0) + 1;
       imageReviewState.set(day, state);
-      await bot.sendMessage(
-        chatId,
-        `⚠️ [${ev.sort}/${ev.total}] ${ev.korean}: ${ev.reason}`.slice(0, 400)
-      );
+      if (!silent) {
+        await bot.sendMessage(
+          chatId,
+          `⚠️ [${ev.sort}/${ev.total}] ${ev.korean}: ${ev.reason}`.slice(0, 400)
+        );
+      }
       return;
 
     case 'done':
@@ -465,7 +470,7 @@ async function handleImageEvent(bot, chatId, day, ev) {
   }
 }
 
-function spawnImageBatch(bot, chatId, day, koreanFilter) {
+function spawnImageBatch(bot, chatId, day, koreanFilter, opts = {}) {
   const { spawn } = require('child_process');
   const py = detectPython();
   const cwd = require('path').resolve(__dirname, '../..');
@@ -492,7 +497,7 @@ function spawnImageBatch(bot, chatId, day, koreanFilter) {
         continue;
       }
       try {
-        await handleImageEvent(bot, chatId, day, ev);
+        await handleImageEvent(bot, chatId, day, ev, opts);
       } catch (err) {
         console.error('image event handler error:', err.message);
       }
@@ -639,6 +644,86 @@ async function handleImageStatus(bot, msg) {
   await bot.sendMessage(msg.chat.id, report);
 }
 
+// ── /generate_images_all — Day 1~35 자동 연속 생성 ──
+//
+// 개별 이미지 미리보기는 silent 모드로 생략하고, 각 Day가 끝날 때마다
+// 한 줄짜리 요약만 어드민에 전송한다. Day 사이에 5초 대기를 두고,
+// 한 Day가 실패해도 다음 Day로 계속 진행한다.
+//
+const ALL_DAYS_RANGE = { start: 1, end: 35 };
+const ALL_DAYS_INTER_DELAY_MS = 5000;
+
+async function handleGenerateImagesAll(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const chatId = adminChatId(msg.chat.id);
+  await bot.sendMessage(
+    chatId,
+    `🚀 Starting bulk image generation for Day ${ALL_DAYS_RANGE.start}~${ALL_DAYS_RANGE.end}\n` +
+    `Per-image previews are suppressed; you will get one summary line per Day.\n` +
+    `${ALL_DAYS_INTER_DELAY_MS / 1000}s pause between days; failures do not stop the run.`
+  );
+
+  let totalOk = 0;
+  let totalSkipped = 0;
+  let totalFailed = 0;
+  let daysWithError = 0;
+
+  for (let day = ALL_DAYS_RANGE.start; day <= ALL_DAYS_RANGE.end; day++) {
+    imageReviewState.set(day, {
+      chatId, status: 'generating', total: 0, ok: 0, skipped: 0, failed: 0,
+    });
+
+    let exitCode;
+    try {
+      exitCode = await spawnImageBatch(bot, chatId, day, null, { silent: true });
+    } catch (err) {
+      exitCode = -1;
+      console.error(`/generate_images_all day=${day} spawn error:`, err.message);
+    }
+
+    const state = imageReviewState.get(day) || { ok: 0, skipped: 0, failed: 0, total: 0 };
+    totalOk += state.ok || 0;
+    totalSkipped += state.skipped || 0;
+    totalFailed += state.failed || 0;
+
+    if (exitCode === 0) {
+      state.status = 'awaiting_review';
+      imageReviewState.set(day, state);
+      await bot.sendMessage(
+        chatId,
+        `✅ Day ${day} complete (generated: ${state.ok} / skipped: ${state.skipped} / failed: ${state.failed})`
+      );
+    } else {
+      state.status = 'error';
+      imageReviewState.set(day, state);
+      daysWithError++;
+      await bot.sendMessage(
+        chatId,
+        `❌ Day ${day} batch exited with code ${exitCode} ` +
+        `(generated: ${state.ok} / skipped: ${state.skipped} / failed: ${state.failed}). ` +
+        `Continuing to next day.`
+      );
+    }
+
+    // Day 사이 5초 대기 (마지막 Day 후에는 생략)
+    if (day < ALL_DAYS_RANGE.end) {
+      await sleep(ALL_DAYS_INTER_DELAY_MS);
+    }
+  }
+
+  await bot.sendMessage(
+    chatId,
+    `🎉 Bulk run finished — Days ${ALL_DAYS_RANGE.start}~${ALL_DAYS_RANGE.end}\n` +
+    `Total generated: ${totalOk}\n` +
+    `Total skipped:   ${totalSkipped}\n` +
+    `Total failed:    ${totalFailed}\n` +
+    `Days with errors: ${daysWithError}`
+  );
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -650,6 +735,7 @@ module.exports = {
   handleStats,
   handleGenerateMotion,
   handleGenerateImages,
+  handleGenerateImagesAll,
   handleApproveImages,
   handleRedoImage,
   handleImageStatus,
