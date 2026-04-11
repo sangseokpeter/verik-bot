@@ -3,10 +3,11 @@
 Generate a single Korean vocabulary illustration via Gemini.
 
 NOTE on the model:
-  The user spec says "Gemini 1.5 Flash" but that model is text-only
-  and cannot produce images. We use gemini-2.0-flash-exp-image-generation,
-  which is the Flash-tier model that supports image output via
-  responseModalities=["TEXT","IMAGE"].
+  Text-only Flash variants (1.5 Flash, 2.0 Flash, etc.) cannot
+  produce images. We use gemini-2.5-flash-image, the current stable
+  Gemini image-generation model (free tier: ~500 images/day).
+  The earlier preview alias gemini-2.0-flash-exp-image-generation
+  has been retired and now returns 404.
   Override with the GEMINI_IMAGE_MODEL env var if needed.
 
 Required env vars:
@@ -28,7 +29,7 @@ import requests
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 GEMINI_IMAGE_MODEL = os.environ.get(
     'GEMINI_IMAGE_MODEL',
-    'gemini-2.0-flash-exp-image-generation'
+    'gemini-2.5-flash-image'
 )
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
