@@ -1,8 +1,6 @@
 const { supabase } = require('../config/supabase');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const ADMIN_IDS = process.env.ADMIN_IDS?.split(',').map(Number) || [];
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 function isAdmin(userId) {
   return ADMIN_IDS.includes(userId);
@@ -177,37 +175,6 @@ async function handleGenerateAll(bot, msg) {
     }
     await bot.sendMessage(adminId, `🎉 All days (1~35) generation complete!`);
   })();
-}
-
-// ── Claude API 연동 - Admin 자연어 명령 처리 ──
-async function handleAdminMessage(bot, msg) {
-  if (!isAdmin(msg.from.id)) return;
-
-  const text = msg.text;
-  if (!text || text.startsWith('/')) return;
-
-  try {
-    const response = await claude.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: `You are VERI-K admin assistant.
-You help manage a Korean language learning bot for Cambodian students.
-Available commands: /generate_cards [day], /generate_tts [day], /generate_all, /broadcast [msg], /admin, /generate_motion [day], /generate_images [day], /approve_images [day], /redo_image [day] [word], /image_status.
-
-When the admin asks to do something, SUGGEST the exact command they should type — but make it clear they must run it themselves. NEVER imply that you will execute it for them. Always respond in English. Be concise.`,
-      messages: [{ role: 'user', content: text }]
-    });
-
-    const reply = response.content[0].text;
-    await bot.sendMessage(msg.chat.id, `🤖 Assistant:\n${reply}`);
-
-    // NOTE: 자동 명령어 실행 기능 비활성화 (2026-04-11).
-    // 어시스턴트의 응답에 명령어가 포함되어 있어도 자동으로 실행하지 않는다.
-    // 어드민이 명령어를 직접 입력해야 한다.
-  } catch (err) {
-    console.error('Claude API error:', err.message);
-    await bot.sendMessage(msg.chat.id, `❌ Assistant error: ${err.message}`);
-  }
 }
 
 // ── /ask — 학생 → Admin 문의 전달 ──
@@ -659,7 +626,6 @@ module.exports = {
   handleGenerateCards,
   handleGenerateTTS,
   handleGenerateAll,
-  handleAdminMessage,
   handleStudentAsk,
   handleReply,
   handleStats,
