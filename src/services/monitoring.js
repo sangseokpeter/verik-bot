@@ -43,17 +43,17 @@ async function checkInactiveStudents(bot) {
 
   if (!config?.value) return;
 
-  let alertMsg = `⚠️ 미참여 학생 알람\n\n`;
-  alertMsg += `2일 이상 퀴즈 미완료:\n\n`;
+  let alertMsg = `⚠️ Inactive students alert\n\n`;
+  alertMsg += `Quiz not completed for 2+ days:\n\n`;
 
   for (const s of inactiveStudents) {
     const daysSinceActive = Math.floor(
       (Date.now() - new Date(s.last_active).getTime()) / (1000 * 60 * 60 * 24)
     );
-    alertMsg += `• ${s.first_name} (@${s.username || 'N/A'}) - Day ${s.current_day} - ${daysSinceActive}일 미활동\n`;
+    alertMsg += `• ${s.first_name} (@${s.username || 'N/A'}) - Day ${s.current_day} - inactive for ${daysSinceActive} day(s)\n`;
   }
 
-  alertMsg += `\n총 ${inactiveStudents.length}명`;
+  alertMsg += `\nTotal: ${inactiveStudents.length} students`;
 
   await bot.sendMessage(config.value, alertMsg);
   console.log(`⚠️ Inactive alert: ${inactiveStudents.length} students`);

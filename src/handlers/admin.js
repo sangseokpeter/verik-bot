@@ -213,7 +213,7 @@ async function handleStudentAsk(bot, msg, question) {
     `📅 Day: ${currentDay}/35\n` +
     `──────────────────\n` +
     `💬 "${question}"\n\n` +
-    `↩️ 답장: /reply ${studentId} [내용]`
+    `↩️ Reply: /reply ${studentId} [message]`
   );
 }
 
@@ -283,7 +283,7 @@ async function handleStats(bot, msg) {
 
   const dayDist = Object.entries(dayMap)
     .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([day, count]) => `  Day ${day}: ${count}명`)
+    .map(([day, count]) => `  Day ${day}: ${count}`)
     .join('\n');
 
   await bot.sendMessage(msg.chat.id,
@@ -334,16 +334,16 @@ async function handleGenerateMotion(bot, msg, dayArg) {
         .single();
 
       if (sampleErr || !sampleWord) {
-        await bot.sendMessage(msg.chat.id, `⚠️ 샘플 미리보기 불러오기 실패: ${sampleErr?.message || 'no word found'}`);
+        await bot.sendMessage(msg.chat.id, `⚠️ Failed to load sample preview: ${sampleErr?.message || 'no word found'}`);
       } else if (!sampleWord.video_url) {
-        await bot.sendMessage(msg.chat.id, `⚠️ Day ${sampleDay} 첫 번째 단어(${sampleWord.korean})에 video_url이 없습니다.`);
+        await bot.sendMessage(msg.chat.id, `⚠️ Day ${sampleDay} first word (${sampleWord.korean}) has no video_url.`);
       } else {
         await bot.sendVideo(msg.chat.id, sampleWord.video_url, {
-          caption: `📱 샘플 카드 미리보기 - Day ${sampleDay} 첫 번째 단어\n${sampleWord.korean} (${sampleWord.meaning_khmer})`
+          caption: `📱 Sample preview - Day ${sampleDay} first word\n${sampleWord.korean} (${sampleWord.meaning_khmer})`
         });
       }
     } catch (previewErr) {
-      await bot.sendMessage(msg.chat.id, `⚠️ 샘플 미리보기 전송 오류: ${previewErr.message}`);
+      await bot.sendMessage(msg.chat.id, `⚠️ Sample preview send error: ${previewErr.message}`);
     }
   } catch (err) {
     await bot.sendMessage(msg.chat.id, `❌ Error: ${err.stderr?.toString()?.slice(-200) || err.message}`);
@@ -393,7 +393,7 @@ async function handleImageEvent(bot, chatId, day, ev) {
       return;
 
     case 'no_words':
-      await bot.sendMessage(chatId, `⚠️ Day ${day}에 단어가 없습니다.`);
+      await bot.sendMessage(chatId, `⚠️ No words found for Day ${day}.`);
       return;
 
     case 'start':
@@ -405,7 +405,7 @@ async function handleImageEvent(bot, chatId, day, ev) {
       imageReviewState.set(day, state);
       await bot.sendMessage(
         chatId,
-        `📋 Day ${day}: 총 ${state.total}개 단어 (생성 대상 ${ev.to_generate || state.total}개)`
+        `📋 Day ${day}: ${state.total} words total (${ev.to_generate || state.total} to generate)`
       );
       return;
 
@@ -416,7 +416,7 @@ async function handleImageEvent(bot, chatId, day, ev) {
       try {
         await bot.sendPhoto(chatId, ev.url, { caption });
       } catch (e) {
-        await bot.sendMessage(chatId, `${caption}\n${ev.url}\n(이미지 전송 실패: ${e.message})`);
+        await bot.sendMessage(chatId, `${caption}\n${ev.url}\n(photo send failed: ${e.message})`);
       }
       return;
     }
@@ -495,11 +495,11 @@ async function handleGenerateImages(bot, msg, dayArg) {
     return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
   }
   if (!dayArg) {
-    return bot.sendMessage(msg.chat.id, '사용법: /generate_images <day>');
+    return bot.sendMessage(msg.chat.id, 'Usage: /generate_images <day>');
   }
   const day = parseInt(dayArg, 10);
   if (isNaN(day) || day < 1) {
-    return bot.sendMessage(msg.chat.id, '❌ Day는 양의 정수여야 합니다.');
+    return bot.sendMessage(msg.chat.id, '❌ Day must be a positive integer.');
   }
 
   const chatId = adminChatId(msg.chat.id);
@@ -507,7 +507,7 @@ async function handleGenerateImages(bot, msg, dayArg) {
     chatId, status: 'generating', total: 0, ok: 0, skipped: 0, failed: 0
   });
 
-  await bot.sendMessage(chatId, `🎨 Day ${day} 이미지 생성 시작...`);
+  await bot.sendMessage(chatId, `🎨 Starting image generation for Day ${day}...`);
 
   const code = await spawnImageBatch(bot, chatId, day, null);
   const state = imageReviewState.get(day) || { ok: 0, skipped: 0, failed: 0, total: 0 };
@@ -516,15 +516,15 @@ async function handleGenerateImages(bot, msg, dayArg) {
     state.status = 'awaiting_review';
     imageReviewState.set(day, state);
     const summary =
-      `✅ Day ${day} 이미지 생성 완료 (${state.ok + state.skipped}/${state.total})\n` +
-      `   생성: ${state.ok} · 건너뜀: ${state.skipped} · 실패: ${state.failed}\n\n` +
-      `승인: /approve_images ${day}\n` +
-      `재생성: /redo_image ${day} 단어명`;
+      `✅ Day ${day} image generation complete (${state.ok + state.skipped}/${state.total})\n` +
+      `   Generated: ${state.ok} · Skipped: ${state.skipped} · Failed: ${state.failed}\n\n` +
+      `Approve: /approve_images ${day}\n` +
+      `Regenerate: /redo_image ${day} <word>`;
     await bot.sendMessage(chatId, summary);
   } else {
     state.status = 'error';
     imageReviewState.set(day, state);
-    await bot.sendMessage(chatId, `❌ Day ${day} 생성 실패 (exit ${code})`);
+    await bot.sendMessage(chatId, `❌ Day ${day} generation failed (exit ${code})`);
   }
 }
 
@@ -534,11 +534,11 @@ async function handleApproveImages(bot, msg, dayArg) {
     return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
   }
   if (!dayArg) {
-    return bot.sendMessage(msg.chat.id, '사용법: /approve_images <day>');
+    return bot.sendMessage(msg.chat.id, 'Usage: /approve_images <day>');
   }
   const day = parseInt(dayArg, 10);
   if (isNaN(day) || day < 1) {
-    return bot.sendMessage(msg.chat.id, '❌ Day는 양의 정수여야 합니다.');
+    return bot.sendMessage(msg.chat.id, '❌ Day must be a positive integer.');
   }
 
   const chatId = adminChatId(msg.chat.id);
@@ -548,7 +548,7 @@ async function handleApproveImages(bot, msg, dayArg) {
   state.status = 'approved';
   imageReviewState.set(day, state);
 
-  await bot.sendMessage(chatId, `✅ Day ${day} 승인 완료\n→ Day ${day + 1} 자동 시작`);
+  await bot.sendMessage(chatId, `✅ Day ${day} approved\n→ Auto-starting Day ${day + 1}`);
   return handleGenerateImages(bot, msg, String(day + 1));
 }
 
@@ -558,21 +558,21 @@ async function handleRedoImage(bot, msg, dayArg, koreanWord) {
     return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
   }
   if (!dayArg || !koreanWord) {
-    return bot.sendMessage(msg.chat.id, '사용법: /redo_image <day> <단어>');
+    return bot.sendMessage(msg.chat.id, 'Usage: /redo_image <day> <word>');
   }
   const day = parseInt(dayArg, 10);
   if (isNaN(day) || day < 1) {
-    return bot.sendMessage(msg.chat.id, '❌ Day는 양의 정수여야 합니다.');
+    return bot.sendMessage(msg.chat.id, '❌ Day must be a positive integer.');
   }
 
   const chatId = adminChatId(msg.chat.id);
-  await bot.sendMessage(chatId, `🔄 Day ${day} "${koreanWord}" 재생성 중...`);
+  await bot.sendMessage(chatId, `🔄 Regenerating Day ${day} "${koreanWord}"...`);
 
   const code = await spawnImageBatch(bot, chatId, day, koreanWord);
   if (code === 0) {
-    await bot.sendMessage(chatId, `✅ "${koreanWord}" 재생성 완료`);
+    await bot.sendMessage(chatId, `✅ "${koreanWord}" regenerated`);
   } else {
-    await bot.sendMessage(chatId, `❌ 재생성 실패 (exit ${code})`);
+    await bot.sendMessage(chatId, `❌ Regeneration failed (exit ${code})`);
   }
 }
 
@@ -587,7 +587,7 @@ async function handleImageStatus(bot, msg) {
     .select('day_number, image_url');
 
   if (error || !data) {
-    return bot.sendMessage(msg.chat.id, `❌ 조회 실패: ${error?.message || 'no data'}`);
+    return bot.sendMessage(msg.chat.id, `❌ Query failed: ${error?.message || 'no data'}`);
   }
 
   const byDay = new Map();
@@ -600,7 +600,7 @@ async function handleImageStatus(bot, msg) {
   }
 
   const sortedDays = [...byDay.keys()].sort((a, b) => a - b);
-  let report = '📊 이미지 진행 현황\n';
+  let report = '📊 Image generation status\n';
   for (const d of sortedDays) {
     const { total, withImg } = byDay.get(d);
     let mark = '⬜';
@@ -609,10 +609,10 @@ async function handleImageStatus(bot, msg) {
 
     const state = imageReviewState.get(d);
     let suffix = '';
-    if (state?.status === 'approved') suffix = ' [승인됨]';
-    else if (state?.status === 'awaiting_review') suffix = ' [검수대기]';
-    else if (state?.status === 'generating') suffix = ' [생성중]';
-    else if (state?.status === 'error') suffix = ' [에러]';
+    if (state?.status === 'approved') suffix = ' [approved]';
+    else if (state?.status === 'awaiting_review') suffix = ' [awaiting review]';
+    else if (state?.status === 'generating') suffix = ' [generating]';
+    else if (state?.status === 'error') suffix = ' [error]';
 
     report += `${mark} Day ${d}: ${withImg}/${total}${suffix}\n`;
   }

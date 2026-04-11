@@ -146,7 +146,7 @@ async function generateCardsForDay(bot, dayNumber) {
   const adminId = config?.value;
 
   if (adminId) {
-    await bot.sendMessage(adminId, `🎨 Day ${dayNumber} 단어카드 생성 시작\n총 ${words.length}개 카드를 생성합니다...`);
+    await bot.sendMessage(adminId, `🎨 Starting card generation for Day ${dayNumber}\nGenerating ${words.length} cards...`);
   }
 
   let success = 0, failed = 0;
@@ -157,7 +157,7 @@ async function generateCardsForDay(bot, dayNumber) {
       if (imageUrl) {
         success++;
         if (adminId && (i + 1) % 5 === 0) {
-          await bot.sendMessage(adminId, `🎨 진행: ${i + 1}/${words.length} (${words[i].korean})`);
+          await bot.sendMessage(adminId, `🎨 Progress: ${i + 1}/${words.length} (${words[i].korean})`);
         }
       } else { failed++; }
       await new Promise(r => setTimeout(r, 1500));
@@ -168,11 +168,11 @@ async function generateCardsForDay(bot, dayNumber) {
   }
 
   if (adminId) {
-    await bot.sendMessage(adminId, `✅ Day ${dayNumber} 카드 생성 완료!\n성공: ${success}개 / 실패: ${failed}개`);
+    await bot.sendMessage(adminId, `✅ Day ${dayNumber} card generation complete!\nSuccess: ${success} / Failed: ${failed}`);
     const { data: firstCard } = await supabase.from('words').select('*').eq('day_number', dayNumber).not('image_url', 'is', null).neq('image_url', 'skip').order('sort_order').limit(1).single();
     if (firstCard?.image_url && firstCard.image_url !== 'skip') {
       await bot.sendPhoto(adminId, firstCard.image_url, {
-        reply_markup: { inline_keyboard: [[{ text: '✅ OK', callback_data: `admin_cards_ok_${dayNumber}` }, { text: '🔄 다시', callback_data: `admin_cards_redo_${dayNumber}` }]] }
+        reply_markup: { inline_keyboard: [[{ text: '✅ OK', callback_data: `admin_cards_ok_${dayNumber}` }, { text: '🔄 Retry', callback_data: `admin_cards_redo_${dayNumber}` }]] }
       });
     }
   }
@@ -205,7 +205,7 @@ async function generateTTSForDay(bot, dayNumber) {
     if (url) success++;
     await new Promise(r => setTimeout(r, 500));
   }
-  if (adminId) { await bot.sendMessage(adminId, `🔊 Day ${dayNumber} TTS 생성 완료!\n${success}/${words.length}개 음성 파일 생성됨`); }
+  if (adminId) { await bot.sendMessage(adminId, `🔊 Day ${dayNumber} TTS generation complete!\n${success}/${words.length} audio files generated`); }
 }
 
 module.exports = { generateCardsForDay, generateTTSForDay, generateWordImage, generateTTSForWord };
