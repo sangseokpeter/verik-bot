@@ -190,33 +190,20 @@ async function handleAdminMessage(bot, msg) {
     const response = await claude.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: `You are VERI-K admin assistant. 
+      system: `You are VERI-K admin assistant.
 You help manage a Korean language learning bot for Cambodian students.
-Available commands: /generate_cards [day], /generate_tts [day], /generate_all, /broadcast [msg], /admin.
-When the admin asks to do something, respond with the exact command to execute, or explain the current system status.
-Always respond in English. Be concise.`,
+Available commands: /generate_cards [day], /generate_tts [day], /generate_all, /broadcast [msg], /admin, /generate_motion [day], /generate_images [day], /approve_images [day], /redo_image [day] [word], /image_status.
+
+When the admin asks to do something, SUGGEST the exact command they should type — but make it clear they must run it themselves. NEVER imply that you will execute it for them. Always respond in English. Be concise.`,
       messages: [{ role: 'user', content: text }]
     });
 
     const reply = response.content[0].text;
     await bot.sendMessage(msg.chat.id, `🤖 Assistant:\n${reply}`);
 
-    // 명령어가 포함된 경우 자동 실행
-    const cmdMatch = reply.match(/\/(generate_all|generate_cards \d+|generate_tts \d+|admin|broadcast .+)/);
-    if (cmdMatch) {
-      await bot.sendMessage(msg.chat.id, `⚡ Auto-executing: ${cmdMatch[0]}`);
-      const fakeMsg = { ...msg, text: '/' + cmdMatch[1] };
-
-      if (cmdMatch[1] === 'generate_all') {
-        await handleGenerateAll(bot, msg);
-      } else if (cmdMatch[1].startsWith('generate_cards')) {
-        const day = cmdMatch[1].split(' ')[1];
-        await handleGenerateCards(bot, msg, day);
-      } else if (cmdMatch[1].startsWith('generate_tts')) {
-        const day = cmdMatch[1].split(' ')[1];
-        await handleGenerateTTS(bot, msg, day);
-      }
-    }
+    // NOTE: 자동 명령어 실행 기능 비활성화 (2026-04-11).
+    // 어시스턴트의 응답에 명령어가 포함되어 있어도 자동으로 실행하지 않는다.
+    // 어드민이 명령어를 직접 입력해야 한다.
   } catch (err) {
     console.error('Claude API error:', err.message);
     await bot.sendMessage(msg.chat.id, `❌ Assistant error: ${err.message}`);
