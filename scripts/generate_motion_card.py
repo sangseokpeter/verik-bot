@@ -48,7 +48,8 @@ def find_font(names):
 
 KR_BOLD = find_font(['NotoSansKR-Bold.ttf', 'NotoSansCJK-Bold.ttc'])
 KR_REG = find_font(['NotoSansKR-Regular.ttf', 'NotoSansCJK-Regular.ttc'])
-KH_BOLD = find_font(['NotoSansKhmer-Regular.ttf', 'NotoSansKhmer-Bold.ttf'])
+# 크메르어: Battambang-Bold 우선, 없으면 기존 NotoSansKhmer로 폴백
+KH_BOLD = find_font(['Battambang-Bold.ttf', 'Battambang-Regular.ttf', 'NotoSansKhmer-Regular.ttf', 'NotoSansKhmer-Bold.ttf'])
 
 def load_font(path, size):
     try:
