@@ -89,8 +89,10 @@ def main():
 
         tmp_dir = os.path.join(ROOT_DIR, '.tmp_motion')
         os.makedirs(tmp_dir, exist_ok=True)
+        # CDN 캐시 우회를 위해 타임스탬프 추가 (YYYYMMDDHHMMSS)
+        timestamp = time.strftime('%Y%m%d%H%M%S')
         output_path = os.path.join(tmp_dir, f'motion_{key}.mp4')
-        storage_path = f'videos/day{day}/{wid}.mp4'
+        storage_path = f'videos/day{day}/{wid}_{timestamp}.mp4'
 
         word_data = {
             'korean': korean,
