@@ -46,23 +46,40 @@ def upload_to_storage(filepath, storage_path):
     return r.status_code in (200, 201)
 
 def update_video_url(word_id, video_url):
-    """DB의 words.video_url 업데이트. 성공 여부를 반환하고 로그 출력."""
-    url = f'{SUPABASE_URL}/rest/v1/words?id=eq.{word_id}'
+    """DB의 words.video_url 업데이트. 실제 row 변경 여부를 검증하고 로그 출력."""
+    url = f'{SUPABASE_URL}/rest/v1/words?id=eq.{word_id}&select=id,video_url'
     headers = {
         'apikey': SUPABASE_KEY,
         'Authorization': f'Bearer {SUPABASE_KEY}',
         'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
+        # return=representation: RLS가 row를 차단하면 빈 배열 반환 → 실제 업데이트 검증 가능
+        'Prefer': 'return=representation'
     }
     try:
         r = requests.patch(url, headers=headers, json={'video_url': video_url}, timeout=10)
-        if r.status_code in (200, 204):
-            print(f"  DB UPDATE OK: word_id={word_id} video_url set")
-            return True
-        else:
+        if r.status_code not in (200, 201):
             body = (r.text or '')[:200]
             print(f"  DB UPDATE FAIL: word_id={word_id} status={r.status_code} body={body}")
             return False
+
+        # 응답 body에 업데이트된 row가 있는지 확인
+        try:
+            rows = r.json()
+        except Exception:
+            print(f"  DB UPDATE FAIL: word_id={word_id} non-json response: {r.text[:150]}")
+            return False
+
+        if not isinstance(rows, list) or len(rows) == 0:
+            print(f"  DB UPDATE FAIL: word_id={word_id} 0 rows affected (RLS/permission?)")
+            return False
+
+        saved_url = rows[0].get('video_url')
+        if saved_url != video_url:
+            print(f"  DB UPDATE MISMATCH: word_id={word_id} saved={saved_url} expected={video_url}")
+            return False
+
+        print(f"  DB UPDATE OK: word_id={word_id} video_url saved ({len(rows)} row)")
+        return True
     except Exception as e:
         print(f"  DB UPDATE ERROR: word_id={word_id} {type(e).__name__}: {str(e)[:150]}")
         return False
