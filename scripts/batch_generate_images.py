@@ -148,7 +148,7 @@ def main():
         prompt = build_prompt(korean, meaning_khmer, category)
 
         try:
-            png = generate_image_bytes(prompt)
+            png = generate_image_bytes(prompt, korean=korean, meaning_khmer=meaning_khmer)
         except Exception as e:
             failed += 1
             emit({
