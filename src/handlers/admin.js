@@ -724,6 +724,21 @@ async function handleGenerateImagesAll(bot, msg) {
   );
 }
 
+// ── /trigger_review — Sunday review 수동 실행 ──
+async function handleTriggerReview(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+  await bot.sendMessage(msg.chat.id, '🔄 Manually triggering Sunday review for all active students...');
+  try {
+    const { sendSundayReview } = require('../services/review');
+    await sendSundayReview(bot);
+    await bot.sendMessage(msg.chat.id, '✅ Sunday review triggered successfully.');
+  } catch (err) {
+    await bot.sendMessage(msg.chat.id, `❌ Sunday review failed: ${err.message}`);
+  }
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -739,6 +754,7 @@ module.exports = {
   handleApproveImages,
   handleRedoImage,
   handleImageStatus,
+  handleTriggerReview,
   isAdmin,
   ADMIN_IDS
 };

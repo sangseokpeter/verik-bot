@@ -4,7 +4,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, isAdmin } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -34,6 +34,7 @@ bot.onText(/\/generate_images\s+(\d+)/, (msg, match) => handleGenerateImages(bot
 bot.onText(/\/approve_images\s+(\d+)/, (msg, match) => handleApproveImages(bot, msg, match[1]));
 bot.onText(/\/redo_image\s+(\d+)\s+(.+)/, (msg, match) => handleRedoImage(bot, msg, match[1], match[2].trim()));
 bot.onText(/\/image_status/, (msg) => handleImageStatus(bot, msg));
+bot.onText(/\/trigger_review/, (msg) => handleTriggerReview(bot, msg));
 
 // ── 학생 문의 ──
 bot.onText(/\/ask (.+)/, (msg, match) => handleStudentAsk(bot, msg, match[1]));

@@ -147,4 +147,37 @@ async function sendWordCards(bot, chatId, day) {
   await sendWordCard(bot, chatId, day, 0);
 }
 
-module.exports = { handleWordCardCallback, sendWordCard, sendWordCards, handleTTSCallback };
+/**
+ * Review용 단일 카드 전송 — word 객체를 직접 받아 video→image→text 폴백.
+ * Sunday review에서 여러 Day의 단어를 혼합 전송할 때 사용.
+ */
+async function sendReviewCard(bot, chatId, word, index, total) {
+  const caption = `🔄 [${index + 1}/${total}] ${word.korean} (${word.meaning_khmer || ''})`;
+  try {
+    // 비디오 우선
+    if (word.video_url) {
+      try {
+        await bot.sendVideo(chatId, word.video_url, {
+          caption,
+          supports_streaming: true,
+        });
+        return;
+      } catch {
+        // video 실패 → image 폴백
+      }
+    }
+    // 이미지 폴백
+    if (word.image_url && word.image_url !== 'skip') {
+      await bot.sendPhoto(chatId, word.image_url, { caption });
+      return;
+    }
+    // 텍스트 폴백
+    await bot.sendMessage(chatId,
+      `${caption}\n📖 ${word.korean} = ${word.meaning_khmer || '?'}`
+    );
+  } catch (err) {
+    console.error(`Review card send failed for ${word.korean}:`, err.message);
+  }
+}
+
+module.exports = { handleWordCardCallback, sendWordCard, sendWordCards, sendReviewCard, handleTTSCallback };
