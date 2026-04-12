@@ -10,6 +10,7 @@ function calcCurrentDay(startDate) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
+  // 35 days × ~35 words = 1,207 words total
   return Math.max(1, Math.min(diffDays, 35));
 }
 

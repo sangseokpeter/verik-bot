@@ -47,14 +47,16 @@ async function handleAdminCommand(bot, msg) {
     `👥 Active students: ${studentCount}\n` +
     `📝 Quizzes today: ${todayQuizzes}\n` +
     `📊 Avg score: ${avgScore}%\n` +
-    `🎨 Cards ready: ${cardsReady} / 1025\n` +
-    `🔊 TTS ready: ${ttsReady} / 1025\n\n` +
+    `🎨 Cards ready: ${cardsReady} / 1207\n` +
+    `🔊 TTS ready: ${ttsReady} / 1207\n\n` +
     `Commands:\n` +
+    `/run_pipeline - Full pipeline (illustrations+TTS+motion)\n` +
+    `/pipeline_status - Pipeline progress\n` +
+    `/notify_upgrade - Send upgrade notice to students\n` +
     `/broadcast [msg] - Send to all students\n` +
-    `/reply [id] [msg] - Reply to a student (student sees Khmer header)\n` +
-    `/generate_cards [day] - Generate card images\n` +
-    `/generate_tts [day] - Generate TTS audio\n` +
-    `/generate_all - Auto-generate Day 1~35 (cards + TTS)\n` +
+    `/reply [id] [msg] - Reply to a student\n` +
+    `/generate_images [day] - Generate illustrations\n` +
+    `/image_status - Image generation status\n` +
     `/admin - This dashboard`
   );
 }
@@ -739,6 +741,189 @@ async function handleTriggerReview(bot, msg) {
   }
 }
 
+// ── /run_pipeline — 전체 파이프라인 실행 (일러스트→TTS→모션카드) ──
+const pipelineState = { running: false, stage: '', progress: '' };
+
+function spawnPipeline(bot, chatId, scriptName, label) {
+  const { spawn } = require('child_process');
+  const py = detectPython();
+  const cwd = require('path').resolve(__dirname, '../..');
+
+  return new Promise((resolve) => {
+    const child = spawn(py, [`scripts/${scriptName}`], { cwd, env: { ...process.env } });
+    let buffer = '';
+    let lastOk = 0, lastFailed = 0, lastTotal = 0;
+
+    child.stdout.on('data', async (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let ev;
+        try { ev = JSON.parse(trimmed); } catch { continue; }
+
+        if (ev.type === 'start') {
+          lastTotal = ev.total || 0;
+          pipelineState.progress = `0/${lastTotal}`;
+        }
+        if (ev.type === 'progress' || ev.type === 'done') {
+          lastOk = ev.ok || 0;
+          lastFailed = ev.failed || 0;
+          pipelineState.progress = `${ev.current || lastOk + lastFailed}/${lastTotal} (ok:${lastOk} fail:${lastFailed})`;
+        }
+        // Report every 50
+        if (ev.type === 'progress') {
+          try {
+            await bot.sendMessage(chatId,
+              `📊 ${label}: ${ev.current}/${ev.total} (OK: ${ev.ok}, Failed: ${ev.failed})`
+            );
+          } catch {}
+        }
+        if (ev.type === 'done') {
+          try {
+            await bot.sendMessage(chatId,
+              `✅ ${label} complete!\nOK: ${ev.ok} / Failed: ${ev.failed} / Total: ${ev.total}`
+            );
+          } catch {}
+        }
+        if (ev.type === 'config_error') {
+          try {
+            await bot.sendMessage(chatId, `❌ ${label} config error: ${ev.message}`);
+          } catch {}
+        }
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      console.error(`[${scriptName}]`, chunk.toString().slice(0, 300));
+    });
+
+    child.on('close', (code) => resolve(code));
+  });
+}
+
+async function handleRunPipeline(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+  if (pipelineState.running) {
+    return bot.sendMessage(msg.chat.id, `⚠️ Pipeline already running: ${pipelineState.stage}\n${pipelineState.progress}`);
+  }
+
+  const chatId = adminChatId(msg.chat.id);
+  pipelineState.running = true;
+
+  await bot.sendMessage(chatId,
+    `🚀 Starting full pipeline for 1,207 words\n` +
+    `Stage 1: Illustrations (Gemini)\n` +
+    `Stage 2: TTS (OpenAI)\n` +
+    `Stage 3: Motion Cards (MP4)\n\n` +
+    `This will take a while. Progress reports every 50 words.`
+  );
+
+  const stages = [
+    { script: 'pipeline_generate_all.py', label: '🎨 Stage 1: Illustrations' },
+    { script: 'pipeline_generate_tts.py', label: '🔊 Stage 2: TTS' },
+    { script: 'pipeline_generate_motion.py', label: '🎬 Stage 3: Motion Cards' },
+  ];
+
+  for (const stage of stages) {
+    pipelineState.stage = stage.label;
+    pipelineState.progress = 'starting...';
+    await bot.sendMessage(chatId, `\n${stage.label} — Starting...`);
+
+    const code = await spawnPipeline(bot, chatId, stage.script, stage.label);
+    if (code !== 0) {
+      await bot.sendMessage(chatId, `❌ ${stage.label} failed with exit code ${code}. Continuing...`);
+    }
+
+    // 5s pause between stages
+    await new Promise(r => setTimeout(r, 5000));
+  }
+
+  pipelineState.running = false;
+  pipelineState.stage = '';
+  pipelineState.progress = '';
+
+  await bot.sendMessage(chatId,
+    `🎉 Full pipeline complete!\n` +
+    `1,207 words: Illustrations + TTS + Motion Cards\n` +
+    `Use /pipeline_status or /image_status to verify.`
+  );
+}
+
+// ── /pipeline_status ──
+async function handlePipelineStatus(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const { data, error } = await supabase
+    .from('words')
+    .select('day_number, image_url, audio_url, video_url');
+
+  if (error || !data) {
+    return bot.sendMessage(msg.chat.id, `❌ Query failed: ${error?.message || 'no data'}`);
+  }
+
+  const total = data.length;
+  const withImg = data.filter(w => w.image_url).length;
+  const withAudio = data.filter(w => w.audio_url).length;
+  const withVideo = data.filter(w => w.video_url).length;
+
+  let status = pipelineState.running
+    ? `🔄 Pipeline running: ${pipelineState.stage}\n   ${pipelineState.progress}\n\n`
+    : '';
+
+  status +=
+    `📊 Pipeline Status (${total} words)\n` +
+    `──────────────────\n` +
+    `🎨 Illustrations: ${withImg}/${total}\n` +
+    `🔊 TTS Audio: ${withAudio}/${total}\n` +
+    `🎬 Motion Cards: ${withVideo}/${total}\n` +
+    `──────────────────\n` +
+    `${withImg === total && withAudio === total && withVideo === total ? '✅ All content ready!' : '⏳ Content generation in progress'}`;
+
+  await bot.sendMessage(msg.chat.id, status);
+}
+
+// ── /notify_upgrade — 학생에게 업그레이드 알림 ──
+async function handleNotifyUpgrade(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const { data: students } = await supabase
+    .from('students').select('id').eq('is_active', true);
+
+  if (!students || students.length === 0) {
+    return bot.sendMessage(msg.chat.id, '⚠️ No active students found.');
+  }
+
+  const message =
+    `🎉 VERI-K បានអាប់ដេតថ្មី!\n\n` +
+    `📚 ពាក្យសព្ទបានកើនពី ៧១៩ ដល់ ១,២០៧ ពាក្យ!\n` +
+    `🎨 រូបភាពថ្មីៗ + 🔊 សំឡេងថ្មីៗ + 🎬 វីដេអូថ្មីៗ\n\n` +
+    `💪 ព្រឹកស្អែកចាប់ផ្តើមរៀនពាក្យថ្មីៗ!\n` +
+    `화이팅! 💪`;
+
+  let sent = 0, failed = 0;
+  for (const student of students) {
+    try {
+      await bot.sendMessage(student.id, message);
+      sent++;
+    } catch {
+      failed++;
+    }
+  }
+
+  await bot.sendMessage(msg.chat.id,
+    `✅ Upgrade notification sent\nSent: ${sent} / Failed: ${failed}`
+  );
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -755,6 +940,9 @@ module.exports = {
   handleRedoImage,
   handleImageStatus,
   handleTriggerReview,
+  handleRunPipeline,
+  handlePipelineStatus,
+  handleNotifyUpgrade,
   isAdmin,
   ADMIN_IDS
 };
