@@ -4,27 +4,17 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-dev \
-    build-essential \
     fonts-noto-cjk \
     ffmpeg \
-    zlib1g-dev \
-    libjpeg-dev \
-    libtiff-dev \
-    libfreetype6-dev \
-    liblcms2-dev \
-    libwebp-dev \
-    libopenjp2-7-dev \
-    libraqm-dev \
-    libfribidi-dev \
-    libharfbuzz-dev \
-    pkg-config \
+    imagemagick \
     --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    # Allow ImageMagick to read/write files (default policy may block)
+    sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml 2>/dev/null || true
 
-# Build Pillow from source so it detects libraqm for complex script (Khmer) rendering
-# build-essential provides gcc needed for Pillow source compilation
-RUN pip3 install requests --break-system-packages --no-cache-dir && \
-    pip3 install Pillow --break-system-packages --force-reinstall --no-cache-dir --no-binary Pillow
+# Pillow binary wheel (no source build needed)
+# Khmer complex script rendering handled by ImageMagick (Pango/HarfBuzz built-in)
+RUN pip3 install requests Pillow --break-system-packages --no-cache-dir
 
 WORKDIR /app
 COPY requirements.txt ./

@@ -63,31 +63,79 @@ def load_font(path, size):
         pass
     return ImageFont.load_default()
 
-# Check if raqm is available for complex script (Khmer) text shaping
-try:
-    from PIL import features as _pil_features
-    HAS_RAQM = _pil_features.check('raqm')
-except:
-    HAS_RAQM = False
-print(f"  Pillow raqm support: {HAS_RAQM}", file=sys.stderr)
+def _imagemagick_render_khmer(text, font_path, font_size, fill_color, max_width=None):
+    """Render Khmer text to a transparent PNG using ImageMagick (Pango/HarfBuzz).
+    Returns a Pillow RGBA Image of the rendered text."""
+    if not text or not text.strip():
+        return Image.new('RGBA', (1, 1), (0,0,0,0))
 
-def draw_khmer_text(draw, xy, text, fill, font):
-    """Draw Khmer text with raqm layout if available (fixes coeng/subscript rendering)."""
-    kwargs = {'fill': fill, 'font': font}
-    if HAS_RAQM:
-        kwargs['direction'] = 'ltr'
-        kwargs['language'] = 'km'
-        kwargs['layout'] = 'raqm'
-    draw.text(xy, text, **kwargs)
+    # Convert fill color to ImageMagick format
+    if isinstance(fill_color, tuple):
+        fill_color = '#{:02x}{:02x}{:02x}'.format(*fill_color[:3])
 
-def khmer_textbbox(draw, xy, text, font):
-    """Get Khmer text bounding box with raqm layout if available."""
-    kwargs = {'font': font}
-    if HAS_RAQM:
-        kwargs['direction'] = 'ltr'
-        kwargs['language'] = 'km'
-        kwargs['layout'] = 'raqm'
-    return draw.textbbox(xy, text, **kwargs)
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        cmd = [
+            'convert',
+            '-background', 'none',
+            '-fill', fill_color,
+            '-font', font_path,
+            '-pointsize', str(font_size),
+            '-gravity', 'NorthWest',
+        ]
+        if max_width:
+            cmd.extend(['-size', f'{max_width}x'])
+        cmd.extend([f'label:{text}', tmp_path])
+
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        if result.returncode != 0:
+            err = result.stderr.decode('utf-8', 'replace')[:300]
+            print(f"  ImageMagick error: {err}", file=sys.stderr)
+            # Fallback: render with Pillow (may be imperfect for Khmer)
+            return None
+
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+            img = Image.open(tmp_path).convert('RGBA')
+            return img
+    except Exception as e:
+        print(f"  ImageMagick exception: {e}", file=sys.stderr)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+    return None
+
+def draw_khmer_text(target_img, xy, text, fill, font):
+    """Draw Khmer text using ImageMagick for proper complex script rendering.
+    Falls back to Pillow if ImageMagick fails."""
+    font_path = font.path if hasattr(font, 'path') else KH_BOLD
+    font_size = font.size if hasattr(font, 'size') else 52
+
+    rendered = _imagemagick_render_khmer(text, font_path, font_size, fill)
+    if rendered:
+        target_img.paste(rendered, xy, rendered)
+    else:
+        # Fallback to Pillow
+        draw = ImageDraw.Draw(target_img)
+        draw.text(xy, text, fill=fill, font=font)
+
+def khmer_text_size(text, font):
+    """Get Khmer text width and height using ImageMagick.
+    Returns (width, height) tuple."""
+    font_path = font.path if hasattr(font, 'path') else KH_BOLD
+    font_size = font.size if hasattr(font, 'size') else 52
+
+    rendered = _imagemagick_render_khmer(text, font_path, font_size, '#000000')
+    if rendered:
+        return rendered.size
+    # Fallback to Pillow
+    tmp_img = Image.new('RGBA', (1, 1))
+    draw = ImageDraw.Draw(tmp_img)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return (bbox[2] - bbox[0], bbox[3] - bbox[1])
 
 FONTS = {}
 def get_fonts():
@@ -360,9 +408,8 @@ def create_word_section(korean, pronunciation, khmer):
     tw2 = bbox2[2]-bbox2[0]
     draw.text(((area_w-tw2)//2, pron_y), pronunciation, fill=TEXT_GRAY, font=fonts['pron'])
 
-    bbox3 = khmer_textbbox(draw, (0,0), khmer, khmer_font_big)
-    tw3 = bbox3[2]-bbox3[0]
-    draw_khmer_text(draw, ((area_w-tw3)//2, khmer_y), khmer, fill=TEXT_KHMER, font=khmer_font_big)
+    tw3, _ = khmer_text_size(khmer, khmer_font_big)
+    draw_khmer_text(img, ((area_w-tw3)//2, khmer_y), khmer, fill=TEXT_KHMER, font=khmer_font_big)
     return img
 
 def find_highlight_span(example_kr, keyword):
@@ -436,7 +483,7 @@ def create_example_section(example_kr, example_khmer, keyword):
     else:
         draw.text((20,55), example_kr or "", fill=TEXT_DARK, font=fonts['ex'])
 
-    draw_khmer_text(draw, (18,110), clean_khmer_text(example_khmer) or "", fill=TEXT_KHMER, font=fonts['khmer_ex'])
+    draw_khmer_text(img, (18,110), clean_khmer_text(example_khmer) or "", fill=TEXT_KHMER, font=fonts['khmer_ex'])
     return img
 
 # === ANIMATION ===
