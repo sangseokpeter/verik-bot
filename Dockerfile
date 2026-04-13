@@ -23,4 +23,9 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 
+# Register Battambang fonts as system fonts so ImageMagick can find them
+RUN mkdir -p /usr/share/fonts/truetype/battambang && \
+    cp fonts/Battambang-Bold.ttf fonts/Battambang-Regular.ttf /usr/share/fonts/truetype/battambang/ && \
+    fc-cache -f
+
 CMD ["node", "src/index.js"]

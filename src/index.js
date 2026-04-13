@@ -12,6 +12,37 @@ const { sendSundayReview } = require('./services/review');
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 console.log('🤖 VERI-K Bot started!');
 
+// ── Startup DB check: example_khmer 컬럼 확인 ──
+(async () => {
+  try {
+    // Day 1, sort_order 1 의 example_khmer 확인
+    const { data: row, error: err1 } = await supabase
+      .from('words')
+      .select('id, korean, example_khmer')
+      .eq('day_number', 1)
+      .eq('sort_order', 1)
+      .single();
+    if (err1) {
+      console.error('[DB CHECK] Day1 sort1 query error:', err1.message);
+    } else {
+      console.log(`[DB CHECK] Day1 sort1 → id=${row.id}, korean=${row.korean}, example_khmer=${JSON.stringify(row.example_khmer)}`);
+    }
+
+    // example_khmer가 비어있는 행 수 카운트
+    const { count, error: err2 } = await supabase
+      .from('words')
+      .select('id', { count: 'exact', head: true })
+      .or('example_khmer.is.null,example_khmer.eq.');
+    if (err2) {
+      console.error('[DB CHECK] empty example_khmer count error:', err2.message);
+    } else {
+      console.log(`[DB CHECK] Words with empty example_khmer: ${count} rows`);
+    }
+  } catch (e) {
+    console.error('[DB CHECK] exception:', e.message);
+  }
+})();
+
 // ── 학생 명령어 ──
 bot.onText(/\/start/, (msg) => handleStart(bot, msg));
 bot.onText(/\/quiz/, (msg) => handleCommand(bot, msg, 'quiz'));
