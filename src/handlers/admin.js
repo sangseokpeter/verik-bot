@@ -298,58 +298,85 @@ async function handleStats(bot, msg) {
   );
 }
 
-// ── /generate_motion [day] — 모션 카드 비디오 생성 ──
+// ── /generate_motion [day] — 모션 카드 비디오 생성 (non-blocking spawn) ──
 async function handleGenerateMotion(bot, msg, dayArg) {
   if (!isAdmin(msg.from.id)) {
     return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
   }
 
   const label = dayArg ? `Day ${dayArg}` : 'All 35 days';
-  await bot.sendMessage(msg.chat.id, `🎬 Starting motion card generation: ${label}...`);
+  await bot.sendMessage(msg.chat.id, `🎬 Starting motion card generation: ${label}...\n(Running in background — bot stays responsive)`);
 
-  const { execSync } = require('child_process');
+  const { spawn, execSync } = require('child_process');
   // python3 또는 python 자동 탐지
   let py = 'python3';
   try { execSync('python3 --version', { stdio: 'ignore' }); } catch {
     try { execSync('python --version', { stdio: 'ignore' }); py = 'python'; } catch {}
   }
-  try {
-    const cmd = dayArg
-      ? `${py} scripts/batch_generate_all.py ${dayArg}`
-      : `${py} scripts/batch_generate_all.py`;
-    const result = execSync(cmd, {
-      timeout: 1800000,
-      env: { ...process.env },
-      cwd: require('path').resolve(__dirname, '../..')
-    });
-    await bot.sendMessage(msg.chat.id, `✅ Motion card generation complete!\n${result.toString().split('\n').slice(-3).join('\n')}`);
 
-    // ── 샘플 카드 미리보기: Day N 첫 번째 단어 MP4 전송 ──
-    try {
-      const sampleDay = dayArg ? Number(dayArg) : 1;
-      const { data: sampleWord, error: sampleErr } = await supabase
-        .from('words')
-        .select('korean, meaning_khmer, video_url, sort_order')
-        .eq('day_number', sampleDay)
-        .order('sort_order', { ascending: true })
-        .limit(1)
-        .single();
+  const args = ['scripts/batch_generate_all.py'];
+  if (dayArg) args.push(String(dayArg));
 
-      if (sampleErr || !sampleWord) {
-        await bot.sendMessage(msg.chat.id, `⚠️ Failed to load sample preview: ${sampleErr?.message || 'no word found'}`);
-      } else if (!sampleWord.video_url) {
-        await bot.sendMessage(msg.chat.id, `⚠️ Day ${sampleDay} first word (${sampleWord.korean}) has no video_url.`);
-      } else {
-        await bot.sendVideo(msg.chat.id, sampleWord.video_url, {
-          caption: `📱 Sample preview - Day ${sampleDay} first word\n${sampleWord.korean} (${sampleWord.meaning_khmer})`
-        });
-      }
-    } catch (previewErr) {
-      await bot.sendMessage(msg.chat.id, `⚠️ Sample preview send error: ${previewErr.message}`);
+  const cwd = require('path').resolve(__dirname, '../..');
+  const child = spawn(py, args, { cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+  let stdout = '';
+  let stderr = '';
+  let lastProgress = 0;
+
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+    // 진행률 10단어마다 텔레그램에 보고
+    const lines = stdout.split('\n');
+    const progressLines = lines.filter(l => l.includes('Progress:'));
+    if (progressLines.length > lastProgress) {
+      lastProgress = progressLines.length;
+      const latest = progressLines[progressLines.length - 1].trim();
+      bot.sendMessage(msg.chat.id, `🎬 ${latest}`).catch(() => {});
     }
-  } catch (err) {
-    await bot.sendMessage(msg.chat.id, `❌ Error: ${err.stderr?.toString()?.slice(-200) || err.message}`);
-  }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  child.on('close', async (code) => {
+    if (code === 0) {
+      const lastLines = stdout.trim().split('\n').slice(-3).join('\n');
+      await bot.sendMessage(msg.chat.id, `✅ Motion card generation complete!\n${lastLines}`);
+
+      // ── 샘플 카드 미리보기: Day N 첫 번째 단어 MP4 전송 ──
+      try {
+        const sampleDay = dayArg ? Number(dayArg) : 1;
+        const { data: sampleWord, error: sampleErr } = await supabase
+          .from('words')
+          .select('korean, meaning_khmer, video_url, sort_order')
+          .eq('day_number', sampleDay)
+          .order('sort_order', { ascending: true })
+          .limit(1)
+          .single();
+
+        if (sampleErr || !sampleWord) {
+          await bot.sendMessage(msg.chat.id, `⚠️ Failed to load sample preview: ${sampleErr?.message || 'no word found'}`);
+        } else if (!sampleWord.video_url) {
+          await bot.sendMessage(msg.chat.id, `⚠️ Day ${sampleDay} first word (${sampleWord.korean}) has no video_url.`);
+        } else {
+          await bot.sendVideo(msg.chat.id, sampleWord.video_url, {
+            caption: `📱 Sample preview - Day ${sampleDay} first word\n${sampleWord.korean} (${sampleWord.meaning_khmer})`
+          });
+        }
+      } catch (previewErr) {
+        await bot.sendMessage(msg.chat.id, `⚠️ Sample preview send error: ${previewErr.message}`);
+      }
+    } else {
+      const errTail = stderr.slice(-300) || stdout.slice(-300) || `exit code ${code}`;
+      await bot.sendMessage(msg.chat.id, `❌ Motion card generation failed:\n${errTail}`);
+    }
+  });
+
+  child.on('error', async (err) => {
+    await bot.sendMessage(msg.chat.id, `❌ Failed to start motion card process: ${err.message}`);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
