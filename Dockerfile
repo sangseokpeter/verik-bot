@@ -7,6 +7,13 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     fonts-noto-cjk \
     ffmpeg \
+    zlib1g-dev \
+    libjpeg-dev \
+    libtiff-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libwebp-dev \
+    libopenjp2-7-dev \
     libraqm-dev \
     libfribidi-dev \
     libharfbuzz-dev \
