@@ -48,8 +48,12 @@ def find_font(names):
 
 KR_BOLD = find_font(['NotoSansKR-Bold.ttf', 'NotoSansCJK-Bold.ttc'])
 KR_REG = find_font(['NotoSansKR-Regular.ttf', 'NotoSansCJK-Regular.ttc'])
-# 크메르어: Battambang-Bold 우선, 없으면 기존 NotoSansKhmer로 폴백
+# 크메르어: Battambang 우선 (Bold → Regular), 없으면 NotoSansKhmer 폴백
 KH_BOLD = find_font(['Battambang-Bold.ttf', 'Battambang-Regular.ttf', 'NotoSansKhmer-Regular.ttf', 'NotoSansKhmer-Bold.ttf'])
+if KH_BOLD:
+    print(f"  Khmer font loaded: {KH_BOLD}", file=sys.stderr)
+else:
+    print("  WARNING: No Khmer font found! Battambang/NotoSansKhmer missing.", file=sys.stderr)
 
 def load_font(path, size):
     try:
@@ -58,6 +62,24 @@ def load_font(path, size):
     except:
         pass
     return ImageFont.load_default()
+
+# Check if raqm is available for complex script (Khmer) text shaping
+try:
+    from PIL import features as _pil_features
+    HAS_RAQM = _pil_features.check('raqm')
+except:
+    HAS_RAQM = False
+
+def draw_khmer_text(draw, xy, text, fill, font):
+    """Draw Khmer text with raqm layout if available (fixes coeng/subscript rendering)."""
+    kwargs = {'fill': fill, 'font': font}
+    if HAS_RAQM:
+        kwargs['direction'] = 'ltr'
+    draw.text(xy, text, **kwargs)
+
+def khmer_textbbox(draw, xy, text, font):
+    """Get Khmer text bounding box with raqm layout if available."""
+    return draw.textbbox(xy, text, font=font)
 
 FONTS = {}
 def get_fonts():
@@ -119,16 +141,19 @@ def get_jamo_steps(korean):
         completed += ch
     return steps
 
-def prerender_stroke_steps(korean, area_w, area_h):
-    """Pre-render all jamo construction step images for the stroke animation."""
+STROKE_H = 120  # Height for stroke animation area (below illustration)
+
+def prerender_stroke_steps(korean, area_w):
+    """Pre-render all jamo construction step images for the stroke animation.
+    Renders in a compact strip (area_w x STROKE_H) without dots or labels."""
     steps = get_jamo_steps(korean)
+    area_h = STROKE_H
     if not steps:
         img = Image.new('RGBA', (area_w, area_h), (0,0,0,0))
         ImageDraw.Draw(img).rounded_rectangle((0,0,area_w-1,area_h-1), radius=14, fill='#F8F4E8')
         return [img]
 
-    font_stroke = load_font(KR_BOLD, 100)
-    label_font = load_font(KR_REG, 16)
+    font_stroke = load_font(KR_BOLD, 72)
 
     # Pre-calculate final word bounding box for ghost outline positioning
     tmp_img = Image.new('RGBA', (area_w, area_h))
@@ -137,10 +162,9 @@ def prerender_stroke_steps(korean, area_w, area_h):
     ghost_tw = ghost_bb[2] - ghost_bb[0]
     ghost_th = ghost_bb[3] - ghost_bb[1]
     gx = (area_w - ghost_tw) // 2
-    gy = (area_h - ghost_th) // 2 - 20
+    gy = (area_h - ghost_th) // 2
 
     rendered = []
-    total = len(steps)
     for idx, step_text in enumerate(steps):
         img = Image.new('RGBA', (area_w, area_h), (0,0,0,0))
         draw = ImageDraw.Draw(img)
@@ -151,20 +175,6 @@ def prerender_stroke_steps(korean, area_w, area_h):
 
         # Current construction state (solid)
         draw.text((gx, gy), step_text, fill=(58,53,48,255), font=font_stroke)
-
-        # Progress dots at bottom
-        dot_r = 4
-        dot_gap = 14
-        dots_w = total * dot_gap
-        dot_x0 = (area_w - dots_w) // 2
-        dot_y = area_h - 25
-        for d in range(total):
-            cx = dot_x0 + d * dot_gap + dot_r
-            color = '#B8983F' if d <= idx else '#D8D0C0'
-            draw.ellipse((cx-dot_r, dot_y-dot_r, cx+dot_r, dot_y+dot_r), fill=color)
-
-        # Label
-        draw.text((area_w // 2 - 20, area_h - 45), "Stroke", fill=(136,136,136,180), font=label_font)
 
         rendered.append(img)
     return rendered
@@ -301,14 +311,28 @@ def create_illustration(emoji_str, korean, category, custom_path, supabase_url):
     draw.text(((area_w-tw)//2, 110), korean, fill=(255,255,255,240), font=font)
     return img
 
+def clean_khmer_text(text):
+    """Clean Khmer text: remove stray + signs and normalize."""
+    if not text:
+        return text
+    # Remove stray + that sometimes appears from URL encoding or DB issues
+    text = text.replace('+', ' ').strip()
+    # Collapse multiple spaces
+    while '  ' in text:
+        text = text.replace('  ', ' ')
+    return text
+
 def create_word_section(korean, pronunciation, khmer):
     fonts = get_fonts()
+    khmer = clean_khmer_text(khmer)
 
-    # [간격3] 한국어 끝 ↔ 발음: +15px (80→95)
-    # [간격4] 발음 끝 ↔ 크메르어: +15px (130→160)
-    pron_y = 95    # was 80
-    khmer_y = 160  # was 130
-    section_h = 240  # was 220, expanded to fit
+    # Explicitly load Battambang for Khmer rendering
+    khmer_font_big = fonts['khmer_big']
+    print(f"  Khmer font (big): {khmer_font_big.path if hasattr(khmer_font_big, 'path') else 'default'}", file=sys.stderr)
+
+    pron_y = 95
+    khmer_y = 160
+    section_h = 240
 
     img = Image.new('RGBA', (W-60, section_h), (0,0,0,0))
     draw = ImageDraw.Draw(img)
@@ -322,9 +346,9 @@ def create_word_section(korean, pronunciation, khmer):
     tw2 = bbox2[2]-bbox2[0]
     draw.text(((area_w-tw2)//2, pron_y), pronunciation, fill=TEXT_GRAY, font=fonts['pron'])
 
-    bbox3 = draw.textbbox((0,0), khmer, font=fonts['khmer_big'])
+    bbox3 = khmer_textbbox(draw, (0,0), khmer, khmer_font_big)
     tw3 = bbox3[2]-bbox3[0]
-    draw.text(((area_w-tw3)//2, khmer_y), khmer, fill=TEXT_KHMER, font=fonts['khmer_big'])
+    draw_khmer_text(draw, ((area_w-tw3)//2, khmer_y), khmer, fill=TEXT_KHMER, font=khmer_font_big)
     return img
 
 def find_highlight_span(example_kr, keyword):
@@ -398,15 +422,16 @@ def create_example_section(example_kr, example_khmer, keyword):
     else:
         draw.text((20,55), example_kr or "", fill=TEXT_DARK, font=fonts['ex'])
 
-    draw.text((18,110), example_khmer or "", fill=TEXT_KHMER, font=fonts['khmer_ex'])
+    draw_khmer_text(draw, (18,110), clean_khmer_text(example_khmer) or "", fill=TEXT_KHMER, font=fonts['khmer_ex'])
     return img
 
 # === ANIMATION ===
 
 def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None, stroke_steps=None):
     if layout is None:
-        layout = {'illust_y': 60, 'word_y': 390, 'ex_y': 590}
+        layout = {'illust_y': 60, 'stroke_y': 400, 'word_y': 540, 'ex_y': 790}
     illust_y = layout['illust_y']
+    stroke_y = layout['stroke_y']
     word_y = layout['word_y']
     ex_y = layout['ex_y']
 
@@ -418,17 +443,17 @@ def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None
         t = i/FPS
         frame = base.copy()
 
-        # Phase 1: Illustration (0~2s, fade out at 1.6~2.0s)
-        if t < 2.0:
+        # Phase 1: Illustration (0~5s, fade in 0~0.4s, fade out 4.6~5.0s)
+        if t < 5.0:
             a = min(1.0, t / 0.4)
-            if t > 1.6:
-                a *= max(0, 1.0 - (t - 1.6) / 0.4)
+            if t > 4.6:
+                a *= max(0, 1.0 - (t - 4.6) / 0.4)
             temp = illust.copy()
             if a < 1:
                 temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x * a)))
             frame.paste(temp, (30, illust_y), temp)
 
-        # Phase 2: Stroke animation (2~5s, crossfade in illustration area)
+        # Phase 2: Stroke animation BELOW illustration (1.8~5.2s)
         if stroke_steps and num_steps > 0 and 1.8 <= t <= 5.2:
             stroke_progress = max(0, min(1.0, (t - 2.0) / 2.6))
             step_idx = min(int(stroke_progress * num_steps), num_steps - 1)
@@ -441,7 +466,7 @@ def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None
                 sa *= max(0, 1.0 - (t - 4.8) / 0.4)
             if sa < 1:
                 stroke_img.putalpha(Image.eval(stroke_img.split()[3], lambda x: int(x * sa)))
-            frame.paste(stroke_img, (30, illust_y), stroke_img)
+            frame.paste(stroke_img, (30, stroke_y), stroke_img)
 
         # Phase 3: Word section (5~6s)
         if t >= 5.0:
@@ -559,30 +584,38 @@ def encode_video(frames_dir, audio_path, output_path):
     cmd = [ffmpeg,'-y','-framerate',str(FPS),'-i',f'{frames_dir}/f_%04d.png',
            '-i',audio_path,'-c:v','libx264','-pix_fmt','yuv420p',
            '-c:a','aac','-b:a','128k','-shortest','-movflags','+faststart',output_path]
-    subprocess.run(cmd, capture_output=True, timeout=60)
+    print(f"  FFmpeg cmd: {' '.join(cmd[:5])}...", file=sys.stderr)
+    result = subprocess.run(cmd, capture_output=True, timeout=120)
+    if result.returncode != 0:
+        print(f"  FFmpeg error (rc={result.returncode}): {result.stderr[-500:].decode('utf-8','replace')}", file=sys.stderr)
 
 def compute_layout(illust_h=320, word_sec_h=240, example_h=180):
-    """레이아웃 위치 자동 계산 (간격 수정 5곳 반영)"""
-    # [간격1] 골드 테두리 끝 ↔ 일러스트: +15px (60→75)
-    illust_y = 75  # was 60
+    """레이아웃 위치 자동 계산 (획순 영역 포함)"""
+    illust_y = 75
 
-    # [간격2] 일러스트 끝 ↔ 한국어 단어: +30px
-    word_y = illust_y + illust_h + 40  # was +10 gap, now +40 (+30 more)
+    # Stroke area below illustration
+    stroke_y = illust_y + illust_h + 15
+    stroke_end = stroke_y + STROKE_H
 
-    # 한국어/발음/크메르어 끝 (word_sec 내부 간격은 create_word_section에서 처리)
+    # Word section below stroke
+    word_y = stroke_end + 30
     word_end_y = word_y + word_sec_h
 
-    # [간격5] 크메르어 뜻 ~ 예문 박스 ~ VERI-K 브랜드: 균등 분배
+    # Example + brand
     brand_h = 25
-    equal_gap = 50
+    equal_gap = 40
 
     ex_y = word_end_y + equal_gap
     ex_end_y = ex_y + example_h
     brand_y = ex_end_y + equal_gap
     card_h = brand_y + brand_h + equal_gap
+    # H.264 requires even dimensions
+    if card_h % 2 != 0:
+        card_h += 1
 
     return {
         'illust_y': illust_y,
+        'stroke_y': stroke_y,
         'word_y': word_y,
         'ex_y': ex_y,
         'brand_y': brand_y,
@@ -594,8 +627,8 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
     word_sec = create_word_section(word_data['korean'], word_data.get('pronunciation',''), word_data.get('meaning_khmer',''))
     example_sec = create_example_section(word_data.get('example_kr',''), word_data.get('example_khmer',''), word_data['korean'])
 
-    # Pre-render stroke animation steps (jamo decomposition)
-    stroke_steps = prerender_stroke_steps(word_data['korean'], illust.size[0], illust.size[1])
+    # Pre-render stroke animation steps (jamo decomposition) — compact strip below illustration
+    stroke_steps = prerender_stroke_steps(word_data['korean'], illust.size[0])
     print(f"  Stroke animation: {len(stroke_steps)} jamo steps for '{word_data['korean']}'", file=sys.stderr)
 
     layout = compute_layout(illust_h=illust.size[1], word_sec_h=word_sec.size[1], example_h=example_sec.size[1])
@@ -606,6 +639,10 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
     tmp = tempfile.mkdtemp()
     try:
         generate_frames(base, illust, word_sec, example_sec, tmp, layout, stroke_steps)
+
+        # Verify frames were generated
+        frame_count = len([f for f in os.listdir(tmp) if f.startswith('f_') and f.endswith('.png')])
+        print(f"  Generated {frame_count} frames in {tmp}", file=sys.stderr)
 
         audio_path = os.path.join(tmp, 'audio.wav')
         word_mp3 = os.path.join(tmp, 'word.mp3')
@@ -631,17 +668,124 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def fetch_word_from_supabase(day, sort_order):
+    """Fetch a single word from Supabase by day_number and sort_order."""
+    supabase_url = os.environ.get('SUPABASE_URL', '')
+    supabase_key = os.environ.get('SUPABASE_KEY', os.environ.get('SUPABASE_SECRET_KEY', ''))
+    if not supabase_url or not supabase_key:
+        print("  WARNING: SUPABASE_URL or SUPABASE_SECRET_KEY not set", file=sys.stderr)
+        return None, supabase_url
+    url = (
+        f"{supabase_url}/rest/v1/words?"
+        f"select=id,day_number,sort_order,korean,pronunciation,meaning_khmer,category,"
+        f"example_kr,example_khmer,audio_url,example_audio_url,image_url"
+        f"&day_number=eq.{day}&sort_order=eq.{sort_order}&limit=1"
+    )
+    headers = {'apikey': supabase_key, 'Authorization': f'Bearer {supabase_key}'}
+    try:
+        if hasattr(requests, 'get'):
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                rows = r.json()
+                if rows:
+                    return rows[0], supabase_url
+        else:
+            import urllib.request
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                rows = json.loads(resp.read())
+                if rows:
+                    return rows[0], supabase_url
+    except Exception as e:
+        print(f"  Supabase fetch error: {e}", file=sys.stderr)
+    return None, supabase_url
+
+
+def resolve_illustration_path(word_row, day, sort_order):
+    """Resolve illustration storage path from image_url or illustration_source_map.
+    Returns the path relative to word-cards bucket (e.g. 'illustrations/1_1.png')."""
+    # 1) Check image_url from DB (Supabase Storage public URL)
+    image_url = word_row.get('image_url', '') if word_row else ''
+    if image_url:
+        # Extract storage path from full URL: .../word-cards/illustrations/1_1.png
+        marker = '/word-cards/'
+        idx = image_url.find(marker)
+        if idx >= 0:
+            return image_url[idx + len(marker):]
+
+    # 2) Fallback: illustration_source_map.json
+    map_path = os.path.join(ROOT_DIR, 'data', 'illustration_source_map.json')
+    if os.path.exists(map_path):
+        with open(map_path, 'r', encoding='utf-8') as f:
+            src_map = json.load(f)
+        key = f"{day}_{sort_order}"
+        if key in src_map:
+            return src_map[key]
+    return None
+
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--test-mp4', action='store_true', help='Generate full MP4 with Supabase data')
     parser.add_argument('--day', type=int, default=1)
+    parser.add_argument('--sort_order', type=int, default=1)
     parser.add_argument('--word_index', type=int, default=0)
     parser.add_argument('--output', default='test_motion_result.png')
     args = parser.parse_args()
 
-    if args.test:
-        # Day 1 첫 번째 단어 테스트 데이터
+    if args.test_mp4:
+        # Full MP4 test: fetch real data from Supabase
+        print(f"=== MP4 Test: Day {args.day}, sort_order {args.sort_order} ===", file=sys.stderr)
+
+        row, supabase_url = fetch_word_from_supabase(args.day, args.sort_order)
+        if not row:
+            print("  ERROR: Could not fetch word from Supabase", file=sys.stderr)
+            sys.exit(1)
+
+        korean = row['korean']
+        print(f"  Word: {korean} ({row.get('meaning_khmer','')})", file=sys.stderr)
+        print(f"  image_url: {row.get('image_url','')}", file=sys.stderr)
+        print(f"  audio_url: {row.get('audio_url','')}", file=sys.stderr)
+        print(f"  example_audio_url: {row.get('example_audio_url','')}", file=sys.stderr)
+
+        # Build word_data dict (DB columns: example_kr, example_khmer)
+        word_data = {
+            'korean': korean,
+            'pronunciation': row.get('pronunciation', ''),
+            'meaning_khmer': row.get('meaning_khmer', ''),
+            'example_kr': row.get('example_kr', ''),
+            'example_khmer': row.get('example_khmer', ''),
+            'category': row.get('category', '명사'),
+            'audio_url': row.get('audio_url', ''),
+            'example_audio_url': row.get('example_audio_url', ''),
+        }
+
+        # Resolve illustration
+        custom_path = resolve_illustration_path(row, args.day, args.sort_order)
+        print(f"  illustration path: {custom_path}", file=sys.stderr)
+
+        # Load emoji fallback
+        emoji_str = None
+        emoji_path = os.path.join(ROOT_DIR, 'data', 'emoji_mapping_by_row.json')
+        if os.path.exists(emoji_path):
+            with open(emoji_path, 'r', encoding='utf-8') as f:
+                emoji_map = json.load(f)
+            key = f"{args.day}_{args.sort_order}"
+            emoji_str = emoji_map.get(key)
+
+        output_path = os.path.join(ROOT_DIR, args.output)
+        success = generate_single_card(word_data, args.day, emoji_str, custom_path, supabase_url, output_path)
+        if success:
+            sz = os.path.getsize(output_path) / 1024
+            print(f"  SUCCESS: {output_path} ({sz:.0f}KB)", file=sys.stderr)
+        else:
+            print(f"  FAILED to generate MP4", file=sys.stderr)
+            sys.exit(1)
+
+    elif args.test:
+        # Static PNG test (legacy)
         test_words = {
             0: {"korean": "아이", "pronunciation": "[아이]", "meaning_khmer": "ក្មេង",
                 "example_kr": "아이가 웃어요.", "example_khmer": "ក្មេងកំពុងសើច។", "category": "명사"},
@@ -649,13 +793,23 @@ if __name__ == '__main__':
         word_data = test_words.get(args.word_index, test_words[0])
         print(f"=== Test: Day {args.day}, word '{word_data['korean']}' ===", file=sys.stderr)
 
+        # Try fetching illustration from Supabase for PNG test too
+        row, supabase_url = fetch_word_from_supabase(args.day, args.sort_order)
+        custom_path = resolve_illustration_path(row, args.day, args.sort_order) if row else None
+        emoji_str = None
+        emoji_path = os.path.join(ROOT_DIR, 'data', 'emoji_mapping_by_row.json')
+        if os.path.exists(emoji_path):
+            with open(emoji_path, 'r', encoding='utf-8') as f:
+                emoji_map = json.load(f)
+            emoji_str = emoji_map.get(f"{args.day}_{args.sort_order}")
+
         get_fonts()
-        illust = create_illustration(None, word_data['korean'], word_data.get('category','명사'), None, None)
+        illust = create_illustration(emoji_str, word_data['korean'], word_data.get('category','명사'), custom_path, supabase_url)
         word_sec = create_word_section(word_data['korean'], word_data['pronunciation'], word_data['meaning_khmer'])
         example_sec = create_example_section(word_data['example_kr'], word_data['example_khmer'], word_data['korean'])
 
         # Stroke animation test
-        stroke_steps = prerender_stroke_steps(word_data['korean'], illust.size[0], illust.size[1])
+        stroke_steps = prerender_stroke_steps(word_data['korean'], illust.size[0])
         jamo_steps = get_jamo_steps(word_data['korean'])
         print(f"  Stroke steps ({len(stroke_steps)}): {jamo_steps}", file=sys.stderr)
 
@@ -664,11 +818,12 @@ if __name__ == '__main__':
 
         base = create_base_card(args.day, layout['card_h'], layout['brand_y'])
 
-        # Save stroke animation mid-frame (shows jamo construction)
+        # Save stroke animation mid-frame (shows jamo construction below illustration)
         if stroke_steps and len(stroke_steps) > 1:
             mid_idx = len(stroke_steps) // 2
             stroke_frame = base.copy()
-            stroke_frame.paste(stroke_steps[mid_idx], (30, layout['illust_y']), stroke_steps[mid_idx])
+            stroke_frame.paste(illust, (30, layout['illust_y']), illust)
+            stroke_frame.paste(stroke_steps[mid_idx], (30, layout['stroke_y']), stroke_steps[mid_idx])
             stroke_out = os.path.join(ROOT_DIR, args.output.replace('.png', '_stroke.png'))
             stroke_frame.save(stroke_out, 'PNG')
             print(f"  Stroke frame saved: {stroke_out}", file=sys.stderr)
