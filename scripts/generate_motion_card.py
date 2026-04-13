@@ -55,6 +55,18 @@ if KH_BOLD:
 else:
     print("  WARNING: No Khmer font found! Battambang/NotoSansKhmer missing.", file=sys.stderr)
 
+# Check if ImageMagick can find Battambang font
+try:
+    _im_result = subprocess.run(['convert', '-list', 'font'], capture_output=True, timeout=10)
+    _im_fonts = _im_result.stdout.decode('utf-8', 'replace')
+    _battambang_lines = [l.strip() for l in _im_fonts.split('\n') if 'battambang' in l.lower() or 'Battambang' in l]
+    if _battambang_lines:
+        print(f"  ImageMagick Battambang fonts: {_battambang_lines}", file=sys.stderr)
+    else:
+        print(f"  WARNING: ImageMagick does NOT list any Battambang font! (convert -list font has {len(_im_fonts.split(chr(10)))} lines)", file=sys.stderr)
+except Exception as _e:
+    print(f"  ImageMagick font list check failed: {_e}", file=sys.stderr)
+
 def load_font(path, size):
     try:
         if path:
@@ -114,10 +126,13 @@ def draw_khmer_text(target_img, xy, text, fill, font):
     font_path = font.path if hasattr(font, 'path') else KH_BOLD
     font_size = font.size if hasattr(font, 'size') else 52
 
+    print(f"  [draw_khmer_text] text={repr(text)}, font={font_path}, size={font_size}, xy={xy}", file=sys.stderr)
     rendered = _imagemagick_render_khmer(text, font_path, font_size, fill)
     if rendered:
+        print(f"  [draw_khmer_text] ImageMagick SUCCESS: {rendered.size[0]}x{rendered.size[1]}px", file=sys.stderr)
         target_img.paste(rendered, xy, rendered)
     else:
+        print(f"  [draw_khmer_text] ImageMagick FAILED — falling back to Pillow", file=sys.stderr)
         # Fallback to Pillow
         draw = ImageDraw.Draw(target_img)
         draw.text(xy, text, fill=fill, font=font)
@@ -447,6 +462,9 @@ def find_highlight_span(example_kr, keyword):
 def create_example_section(example_kr, example_khmer, keyword):
     fonts = get_fonts()
     box_w, box_h = W-80, 180
+    print(f"  [create_example_section] example_kr={repr(example_kr)}", file=sys.stderr)
+    print(f"  [create_example_section] example_khmer={repr(example_khmer)}", file=sys.stderr)
+    print(f"  [create_example_section] keyword={repr(keyword)}", file=sys.stderr)
     img = Image.new('RGBA', (box_w, box_h), (0,0,0,0))
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle((0,0,box_w,box_h), radius=12, fill=WHITE_BOX, outline="#E0D8C8", width=1)
@@ -483,7 +501,11 @@ def create_example_section(example_kr, example_khmer, keyword):
     else:
         draw.text((20,55), example_kr or "", fill=TEXT_DARK, font=fonts['ex'])
 
-    draw_khmer_text(img, (18,110), clean_khmer_text(example_khmer) or "", fill=TEXT_KHMER, font=fonts['khmer_ex'])
+    cleaned_khmer = clean_khmer_text(example_khmer) or ""
+    print(f"  [create_example_section] cleaned_khmer={repr(cleaned_khmer)}, len={len(cleaned_khmer)}", file=sys.stderr)
+    if cleaned_khmer:
+        print(f"  [create_example_section] codepoints: {' '.join(f'U+{ord(c):04X}' for c in cleaned_khmer)}", file=sys.stderr)
+    draw_khmer_text(img, (18,110), cleaned_khmer, fill=TEXT_KHMER, font=fonts['khmer_ex'])
     return img
 
 # === ANIMATION ===

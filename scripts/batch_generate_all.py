@@ -118,6 +118,20 @@ def main():
         resolved = resolve_illustration_path(sample, sample.get('day_number', 1), sample.get('sort_order', 1))
         print(f"DEBUG resolved illustration path: {resolved}")
 
+    # === HEX DUMP: Day 1 sort_order 1 Khmer text ===
+    if words:
+        sample = next((w for w in words if w.get('day_number') == 1 and w.get('sort_order') == 1), words[0])
+        for field in ['meaning_khmer', 'example_khmer']:
+            val = sample.get(field, '')
+            print(f"\nHEX DUMP {field} (Day {sample.get('day_number')} sort {sample.get('sort_order')} {sample.get('korean','')}):")
+            print(f"  raw value: {repr(val)}")
+            print(f"  length: {len(val) if val else 0}")
+            if val:
+                codepoints = ' '.join(f'U+{ord(c):04X}' for c in val)
+                print(f"  codepoints: {codepoints}")
+            else:
+                print(f"  (empty or None)")
+
     print()
 
     for word in words:
