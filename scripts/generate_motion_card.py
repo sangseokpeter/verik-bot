@@ -604,13 +604,13 @@ def compute_layout(illust_h=320, word_sec_h=240, example_h=180):
     """레이아웃 위치 자동 계산 (획순 영역 포함)"""
     illust_y = 75
 
-    # Stroke area below illustration
-    stroke_y = illust_y + illust_h + 15
-    stroke_end = stroke_y + STROKE_H
-
-    # Word section below stroke
-    word_y = stroke_end + 30
+    # Word section directly below illustration
+    word_y = illust_y + illust_h + 45
     word_end_y = word_y + word_sec_h
+
+    # Stroke animation overlays on word section position (same y-coordinate)
+    # so that the jamo build-up visually matches where the final word appears
+    stroke_y = word_y
 
     # Example + brand
     brand_h = 25
@@ -633,7 +633,7 @@ def compute_layout(illust_h=320, word_sec_h=240, example_h=180):
         'card_h': card_h,
     }
 
-def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase_url, output_path):
+def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase_url, output_path, local_example_mp3=None):
     illust = create_illustration(emoji_str, word_data['korean'], word_data.get('category','명사'), custom_path, supabase_url)
     word_sec = create_word_section(word_data['korean'], word_data.get('pronunciation',''), word_data.get('meaning_khmer',''))
     example_sec = create_example_section(word_data.get('example_kr',''), word_data.get('example_khmer',''), word_data['korean'])
@@ -664,10 +664,14 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
         if audio_url:
             download_tts_audio(audio_url, word_mp3)
 
-        # 예문 TTS 다운로드
-        example_audio_url = word_data.get('example_audio_url', '')
-        if example_audio_url:
-            download_tts_audio(example_audio_url, example_mp3)
+        # 예문 TTS 다운로드 (로컬 파일 우선)
+        if local_example_mp3 and os.path.exists(local_example_mp3):
+            shutil.copy2(local_example_mp3, example_mp3)
+            print(f"  Using local example MP3: {local_example_mp3}", file=sys.stderr)
+        else:
+            example_audio_url = word_data.get('example_audio_url', '')
+            if example_audio_url:
+                download_tts_audio(example_audio_url, example_mp3)
 
         # 두 TTS를 0.6초/3.0초에 합성, 실패 시 chime 폴백
         if not create_combined_audio(word_mp3, example_mp3, audio_path):
@@ -744,6 +748,7 @@ if __name__ == '__main__':
     parser.add_argument('--sort_order', type=int, default=1)
     parser.add_argument('--word_index', type=int, default=0)
     parser.add_argument('--output', default='test_motion_result.png')
+    parser.add_argument('--example-mp3', default=None, help='Local example TTS MP3 file override')
     args = parser.parse_args()
 
     if args.test_mp4:
@@ -787,7 +792,8 @@ if __name__ == '__main__':
             emoji_str = emoji_map.get(key)
 
         output_path = os.path.join(ROOT_DIR, args.output)
-        success = generate_single_card(word_data, args.day, emoji_str, custom_path, supabase_url, output_path)
+        local_ex = os.path.abspath(args.example_mp3) if args.example_mp3 else None
+        success = generate_single_card(word_data, args.day, emoji_str, custom_path, supabase_url, output_path, local_example_mp3=local_ex)
         if success:
             sz = os.path.getsize(output_path) / 1024
             print(f"  SUCCESS: {output_path} ({sz:.0f}KB)", file=sys.stderr)

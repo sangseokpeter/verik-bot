@@ -5,7 +5,7 @@ Reads from Supabase DB, generates MP4s, uploads to Supabase Storage.
 """
 import os, sys, json, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from generate_motion_card import generate_single_card
+from generate_motion_card import generate_single_card, resolve_illustration_path
 
 import requests
 
@@ -88,7 +88,6 @@ def main():
     target_day = int(sys.argv[1]) if len(sys.argv) > 1 else None
 
     emoji_map = load_json('emoji_mapping_by_row.json')
-    illust_map = load_json('illustration_source_map.json')
 
     if target_day:
         words = fetch_words(target_day)
@@ -104,6 +103,21 @@ def main():
     print(f"=== Generating {total} motion cards for Day {days[0]}~{days[-1]} ===")
     print(f"SUPABASE_URL: {SUPABASE_URL}")
     print(f"SUPABASE_KEY: {'set' if SUPABASE_KEY else 'MISSING!'}")
+
+    # Verify Pillow raqm support for Khmer rendering
+    try:
+        from PIL import features as _pil_features
+        print(f"Pillow raqm support: {_pil_features.check('raqm')}")
+    except Exception as e:
+        print(f"Pillow raqm check error: {e}")
+
+    # Log Day 1 sort_order 1 illustration_url for debugging
+    if words:
+        sample = next((w for w in words if w.get('day_number') == 1 and w.get('sort_order') == 1), words[0])
+        print(f"DEBUG illustration_url (Day {sample.get('day_number')} sort {sample.get('sort_order')} {sample.get('korean','')}): {sample.get('image_url', 'NONE')}")
+        resolved = resolve_illustration_path(sample, sample.get('day_number', 1), sample.get('sort_order', 1))
+        print(f"DEBUG resolved illustration path: {resolved}")
+
     print()
 
     for word in words:
@@ -114,7 +128,9 @@ def main():
         key = f"{day}_{sort}"
 
         emoji_str = emoji_map.get(key, '')
-        custom_path = illust_map.get(key, None)
+        # Use resolve_illustration_path() which checks DB image_url first,
+        # then falls back to illustration_source_map.json
+        custom_path = resolve_illustration_path(word, day, sort)
 
         tmp_dir = os.path.join(ROOT_DIR, '.tmp_motion')
         os.makedirs(tmp_dir, exist_ok=True)
