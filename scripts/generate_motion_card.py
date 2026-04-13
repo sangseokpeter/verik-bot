@@ -69,17 +69,24 @@ try:
     HAS_RAQM = _pil_features.check('raqm')
 except:
     HAS_RAQM = False
+print(f"  Pillow raqm support: {HAS_RAQM}", file=sys.stderr)
 
 def draw_khmer_text(draw, xy, text, fill, font):
     """Draw Khmer text with raqm layout if available (fixes coeng/subscript rendering)."""
     kwargs = {'fill': fill, 'font': font}
     if HAS_RAQM:
         kwargs['direction'] = 'ltr'
+        kwargs['language'] = 'km'
+        kwargs['layout'] = 'raqm'
     draw.text(xy, text, **kwargs)
 
 def khmer_textbbox(draw, xy, text, font):
     """Get Khmer text bounding box with raqm layout if available."""
-    return draw.textbbox(xy, text, font=font)
+    kwargs = {'font': font}
+    if HAS_RAQM:
+        kwargs['direction'] = 'ltr'
+        kwargs['language'] = 'km'
+    return draw.textbbox(xy, text, **kwargs)
 
 FONTS = {}
 def get_fonts():
@@ -312,10 +319,16 @@ def create_illustration(emoji_str, korean, category, custom_path, supabase_url):
     return img
 
 def clean_khmer_text(text):
-    """Clean Khmer text: remove stray + signs and normalize."""
+    """Clean Khmer text: URL-decode, remove stray + signs, and normalize."""
     if not text:
         return text
-    # Remove stray + that sometimes appears from URL encoding or DB issues
+    # URL-decode (e.g. %E1%9E%80 -> Khmer chars, + -> space)
+    try:
+        from urllib.parse import unquote_plus
+        text = unquote_plus(text)
+    except Exception:
+        pass
+    # Remove any remaining stray + signs
     text = text.replace('+', ' ').strip()
     # Collapse multiple spaces
     while '  ' in text:
@@ -443,15 +456,12 @@ def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None
         t = i/FPS
         frame = base.copy()
 
-        # Phase 1: Illustration (0~5s, fade in 0~0.4s, fade out 4.6~5.0s)
-        if t < 5.0:
-            a = min(1.0, t / 0.4)
-            if t > 4.6:
-                a *= max(0, 1.0 - (t - 4.6) / 0.4)
-            temp = illust.copy()
-            if a < 1:
-                temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x * a)))
-            frame.paste(temp, (30, illust_y), temp)
+        # Phase 1: Illustration (0s ~ end, fade in 0~0.4s, persist until card ends)
+        a = min(1.0, t / 0.4)
+        temp = illust.copy()
+        if a < 1:
+            temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x * a)))
+        frame.paste(temp, (30, illust_y), temp)
 
         # Phase 2: Stroke animation BELOW illustration (1.8~5.2s)
         if stroke_steps and num_steps > 0 and 1.8 <= t <= 5.2:

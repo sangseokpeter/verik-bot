@@ -138,7 +138,7 @@ def main():
             # Example TTS
             example_url = None
             if example:
-                ex_mp3 = generate_tts(example, speed=0.75)
+                ex_mp3 = generate_tts(example, speed=0.6)
                 ex_path = f"audio/example/day{day}/{word_id}.mp3"
                 if upload_audio(ex_mp3, ex_path):
                     example_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{ex_path}"
