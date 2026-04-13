@@ -325,7 +325,9 @@ async function handleGenerateMotion(bot, msg, dayArg) {
   let lastProgress = 0;
 
   child.stdout.on('data', (chunk) => {
-    stdout += chunk.toString();
+    const text = chunk.toString();
+    console.log('[motion-card stdout]', text);
+    stdout += text;
     // 진행률 10단어마다 텔레그램에 보고
     const lines = stdout.split('\n');
     const progressLines = lines.filter(l => l.includes('Progress:'));
@@ -337,7 +339,9 @@ async function handleGenerateMotion(bot, msg, dayArg) {
   });
 
   child.stderr.on('data', (chunk) => {
-    stderr += chunk.toString();
+    const text = chunk.toString();
+    console.error('[motion-card stderr]', text);
+    stderr += text;
   });
 
   child.on('close', async (code) => {
