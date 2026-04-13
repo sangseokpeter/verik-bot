@@ -178,18 +178,32 @@ async function generateCardsForDay(bot, dayNumber) {
   }
 }
 
-// ── TTS 음성 생성 ──
-async function generateTTSForWord(word) {
-  try {
-    const response = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input: word.korean, speed: 0.75 });
-    const audioBuffer = Buffer.from(await response.arrayBuffer());
-    const fileName = `audio/day${word.day_number}/${word.id}.mp3`;
-    const { error } = await supabase.storage.from('word-cards').upload(fileName, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
-    if (error) { console.error(`TTS upload error for ${word.korean}:`, error.message); return null; }
-    const { data: urlData } = supabase.storage.from('word-cards').getPublicUrl(fileName);
-    await supabase.from('words').update({ audio_url: urlData.publicUrl }).eq('id', word.id);
-    return urlData.publicUrl;
-  } catch (err) { console.error(`TTS error for ${word.korean}:`, err.message); return null; }
+// ── TTS 음성 생성 (재시도 로직 포함) ──
+async function generateTTSForWord(word, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // 짧은 단어(예: 아이)는 OpenAI TTS가 실패할 수 있으므로 공백 패딩 추가
+      const input = word.korean.length <= 2 ? `${word.korean}.` : word.korean;
+      const response = await openai.audio.speech.create({ model: 'tts-1', voice: 'nova', input, speed: 0.75 });
+      const audioBuffer = Buffer.from(await response.arrayBuffer());
+      if (audioBuffer.length < 100) {
+        throw new Error(`TTS returned empty audio (${audioBuffer.length} bytes)`);
+      }
+      const fileName = `audio/day${word.day_number}/${word.id}.mp3`;
+      const { error } = await supabase.storage.from('word-cards').upload(fileName, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
+      if (error) { throw new Error(`Upload failed: ${error.message}`); }
+      const { data: urlData } = supabase.storage.from('word-cards').getPublicUrl(fileName);
+      await supabase.from('words').update({ audio_url: urlData.publicUrl }).eq('id', word.id);
+      return urlData.publicUrl;
+    } catch (err) {
+      console.error(`TTS error for ${word.korean} (attempt ${attempt}/${maxRetries}):`, err.message);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1000 * attempt)); // exponential backoff
+      }
+    }
+  }
+  console.error(`TTS failed for ${word.korean} after ${maxRetries} attempts`);
+  return null;
 }
 
 // ── 하루치 TTS 일괄 생성 ──

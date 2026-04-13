@@ -17,7 +17,7 @@ Usage:
 Env vars:
   SUPABASE_URL, SUPABASE_SECRET_KEY
 """
-import os, sys, json, time
+import os, sys, json, time, tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
@@ -36,7 +36,7 @@ def fetch_words():
     import requests
     url = (
         f"{SUPABASE_URL}/rest/v1/words?"
-        f"select=id,day_number,sort_order,korean,pronunciation,meaning_khmer,category,example_kr,audio_url,image_url"
+        f"select=id,day_number,sort_order,korean,pronunciation,meaning_khmer,category,example_kr,example_khmer,audio_url,example_audio_url,image_url"
         f"&order=day_number.asc,sort_order.asc&limit=2000"
     )
     headers = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
@@ -84,7 +84,7 @@ def main():
 
     # Import motion card generator (reuse existing V.02 design)
     try:
-        from generate_motion_card import generate_motion_card
+        from generate_motion_card import generate_single_card
     except ImportError as e:
         emit({'type': 'config_error', 'message': f'Cannot import generate_motion_card: {e}'})
         sys.exit(1)
@@ -108,22 +108,42 @@ def main():
         korean = w['korean']
 
         try:
-            # generate_motion_card returns MP4 bytes
-            mp4_bytes = generate_motion_card(
-                day_number=day,
-                sort_order=sort,
-                korean=korean,
-                pronunciation=w.get('pronunciation', ''),
-                meaning_khmer=w.get('meaning_khmer', ''),
-                category=w.get('category', ''),
-                example_kr=w.get('example_kr', ''),
-                image_url=w.get('image_url', ''),
-                audio_url=w.get('audio_url', ''),
-                supabase_url=SUPABASE_URL,
-            )
+            # Build word_data dict matching generate_single_card expectations
+            word_data = {
+                'korean': korean,
+                'pronunciation': w.get('pronunciation', f'[{korean}]'),
+                'meaning_khmer': w.get('meaning_khmer', ''),
+                'example_kr': w.get('example_kr', ''),
+                'example_khmer': w.get('example_khmer', ''),
+                'category': w.get('category', ''),
+                'audio_url': w.get('audio_url', ''),
+                'example_audio_url': w.get('example_audio_url', ''),
+            }
 
-            if not mp4_bytes:
+            # Load emoji/illustration maps
+            emoji_map_path = os.path.join(ROOT_DIR, 'data', 'emoji_mapping_by_row.json')
+            illust_map_path = os.path.join(ROOT_DIR, 'data', 'illustration_source_map.json')
+            with open(emoji_map_path, 'r', encoding='utf-8') as f:
+                emoji_map = json.load(f)
+            with open(illust_map_path, 'r', encoding='utf-8') as f:
+                illust_map = json.load(f)
+
+            key = f"{day}_{sort}"
+            emoji_str = emoji_map.get(key, '')
+            custom_path = illust_map.get(key, None)
+
+            output_path = os.path.join(tempfile.gettempdir(), f'motion_{word_id}.mp4')
+            success = generate_single_card(word_data, day, emoji_str, custom_path, SUPABASE_URL, output_path)
+
+            if not success or not os.path.exists(output_path):
                 raise RuntimeError("Motion card generation returned empty")
+
+            with open(output_path, 'rb') as f:
+                mp4_bytes = f.read()
+            try:
+                os.remove(output_path)
+            except:
+                pass
 
             # Upload
             video_path = f"videos/day{day}/{word_id}.mp4"

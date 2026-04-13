@@ -424,13 +424,13 @@ def create_combined_audio(word_mp3, example_mp3, output_wav):
         next_idx += 1
         filters.append(f'[{ex_idx}]adelay=3000|3000[ex]')
 
-    # Mix all tracks together
+    # Mix all tracks together (normalize=0 prevents volume division by input count)
     if has_word and has_example:
-        filters.append(f'[{base_idx}][word][ex]amix=inputs=3:duration=first[out]')
+        filters.append(f'[{base_idx}][word][ex]amix=inputs=3:duration=first:normalize=0[out]')
     elif has_word:
-        filters.append(f'[{base_idx}][word]amix=inputs=2:duration=first[out]')
+        filters.append(f'[{base_idx}][word]amix=inputs=2:duration=first:normalize=0[out]')
     elif has_example:
-        filters.append(f'[{base_idx}][ex]amix=inputs=2:duration=first[out]')
+        filters.append(f'[{base_idx}][ex]amix=inputs=2:duration=first:normalize=0[out]')
     else:
         filters.append(f'[{base_idx}]acopy[out]')
 
