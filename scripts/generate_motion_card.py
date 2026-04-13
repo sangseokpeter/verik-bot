@@ -86,6 +86,7 @@ def khmer_textbbox(draw, xy, text, font):
     if HAS_RAQM:
         kwargs['direction'] = 'ltr'
         kwargs['language'] = 'km'
+        kwargs['layout'] = 'raqm'
     return draw.textbbox(xy, text, **kwargs)
 
 FONTS = {}
