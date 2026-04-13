@@ -24,7 +24,7 @@ TEXT_KHMER = "#A0522D"
 HIGHLIGHT_BG = "#F0C8B0"
 TEXT_GRAY = "#888888"
 FPS = 30
-DURATION = 5.0
+DURATION = 8.0
 
 # === FONT PATHS ===
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +74,100 @@ def get_fonts():
             'khmer_ex': load_font(KH_BOLD, 36),
         }
     return FONTS
+
+# === HANGUL JAMO DECOMPOSITION & STROKE ANIMATION ===
+CHOSEONG = list('ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ')
+JUNGSEONG = list('ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ')
+JONGSEONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']
+
+def decompose_hangul_char(ch):
+    """Decompose a Hangul syllable into jamo components."""
+    code = ord(ch)
+    if 0xAC00 <= code <= 0xD7A3:
+        offset = code - 0xAC00
+        cho = offset // (21 * 28)
+        jung = (offset % (21 * 28)) // 28
+        jong = offset % 28
+        parts = [CHOSEONG[cho], JUNGSEONG[jung]]
+        if jong > 0:
+            parts.append(JONGSEONG[jong])
+        return parts
+    return [ch]
+
+def compose_hangul(cho_idx, jung_idx, jong_idx=0):
+    """Compose jamo indices back into a Hangul syllable character."""
+    return chr(0xAC00 + (cho_idx * 21 + jung_idx) * 28 + jong_idx)
+
+def get_jamo_steps(korean):
+    """Progressive jamo build-up steps for stroke animation.
+    '한글' -> ['ㅎ','하','한','한ㄱ','한그','한글']
+    """
+    steps = []
+    completed = ''
+    for ch in korean:
+        parts = decompose_hangul_char(ch)
+        if len(parts) >= 2 and parts[0] in CHOSEONG and parts[1] in JUNGSEONG:
+            cho_idx = CHOSEONG.index(parts[0])
+            jung_idx = JUNGSEONG.index(parts[1])
+            steps.append(completed + parts[0])
+            steps.append(completed + compose_hangul(cho_idx, jung_idx))
+            if len(parts) == 3 and parts[2] in JONGSEONG:
+                jong_idx = JONGSEONG.index(parts[2])
+                steps.append(completed + compose_hangul(cho_idx, jung_idx, jong_idx))
+        else:
+            steps.append(completed + ch)
+        completed += ch
+    return steps
+
+def prerender_stroke_steps(korean, area_w, area_h):
+    """Pre-render all jamo construction step images for the stroke animation."""
+    steps = get_jamo_steps(korean)
+    if not steps:
+        img = Image.new('RGBA', (area_w, area_h), (0,0,0,0))
+        ImageDraw.Draw(img).rounded_rectangle((0,0,area_w-1,area_h-1), radius=14, fill='#F8F4E8')
+        return [img]
+
+    font_stroke = load_font(KR_BOLD, 100)
+    label_font = load_font(KR_REG, 16)
+
+    # Pre-calculate final word bounding box for ghost outline positioning
+    tmp_img = Image.new('RGBA', (area_w, area_h))
+    tmp_draw = ImageDraw.Draw(tmp_img)
+    ghost_bb = tmp_draw.textbbox((0,0), korean, font=font_stroke)
+    ghost_tw = ghost_bb[2] - ghost_bb[0]
+    ghost_th = ghost_bb[3] - ghost_bb[1]
+    gx = (area_w - ghost_tw) // 2
+    gy = (area_h - ghost_th) // 2 - 20
+
+    rendered = []
+    total = len(steps)
+    for idx, step_text in enumerate(steps):
+        img = Image.new('RGBA', (area_w, area_h), (0,0,0,0))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle((0,0,area_w-1,area_h-1), radius=14, fill='#F8F4E8', outline='#E0D8C8', width=1)
+
+        # Ghost outline of final word (faint)
+        draw.text((gx, gy), korean, fill=(210,205,190,80), font=font_stroke)
+
+        # Current construction state (solid)
+        draw.text((gx, gy), step_text, fill=(58,53,48,255), font=font_stroke)
+
+        # Progress dots at bottom
+        dot_r = 4
+        dot_gap = 14
+        dots_w = total * dot_gap
+        dot_x0 = (area_w - dots_w) // 2
+        dot_y = area_h - 25
+        for d in range(total):
+            cx = dot_x0 + d * dot_gap + dot_r
+            color = '#B8983F' if d <= idx else '#D8D0C0'
+            draw.ellipse((cx-dot_r, dot_y-dot_r, cx+dot_r, dot_y+dot_r), fill=color)
+
+        # Label
+        draw.text((area_w // 2 - 20, area_h - 45), "Stroke", fill=(136,136,136,180), font=label_font)
+
+        rendered.append(img)
+    return rendered
 
 # === TWEMOJI ===
 TWEMOJI_CACHE = os.path.join(ROOT_DIR, '.twemoji_cache')
@@ -309,7 +403,7 @@ def create_example_section(example_kr, example_khmer, keyword):
 
 # === ANIMATION ===
 
-def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None):
+def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None, stroke_steps=None):
     if layout is None:
         layout = {'illust_y': 60, 'word_y': 390, 'ex_y': 590}
     illust_y = layout['illust_y']
@@ -318,37 +412,53 @@ def generate_frames(base, illust, word_sec, example_sec, output_dir, layout=None
 
     n = int(DURATION * FPS)
     os.makedirs(output_dir, exist_ok=True)
+    num_steps = len(stroke_steps) if stroke_steps else 0
+
     for i in range(n):
         t = i/FPS
         frame = base.copy()
 
-        if t >= 0:
-            a = min(1.0, t/0.4)
+        # Phase 1: Illustration (0~2s, fade out at 1.6~2.0s)
+        if t < 2.0:
+            a = min(1.0, t / 0.4)
+            if t > 1.6:
+                a *= max(0, 1.0 - (t - 1.6) / 0.4)
             temp = illust.copy()
-            if a < 1: temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x*a)))
+            if a < 1:
+                temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x * a)))
             frame.paste(temp, (30, illust_y), temp)
 
-        if t >= 0.6 and t < 1.8:
-            a = min(1.0, (t-0.6)/0.4)
-            temp = word_sec.copy()
-            mask = Image.new('L', temp.size, 0)
-            ImageDraw.Draw(mask).rectangle((0,0,temp.size[0],110), fill=int(255*a))
-            tm = Image.new('RGBA', temp.size, (0,0,0,0))
-            tm.paste(temp, (0,0), mask)
-            frame.paste(tm, (30, word_y), tm)
+        # Phase 2: Stroke animation (2~5s, crossfade in illustration area)
+        if stroke_steps and num_steps > 0 and 1.8 <= t <= 5.2:
+            stroke_progress = max(0, min(1.0, (t - 2.0) / 2.6))
+            step_idx = min(int(stroke_progress * num_steps), num_steps - 1)
+            stroke_img = stroke_steps[step_idx].copy()
 
-        if t >= 1.8:
-            a = min(1.0, (t-1.8)/0.3)
+            sa = 1.0
+            if t < 2.2:
+                sa = max(0, (t - 1.8) / 0.4)
+            if t > 4.8:
+                sa *= max(0, 1.0 - (t - 4.8) / 0.4)
+            if sa < 1:
+                stroke_img.putalpha(Image.eval(stroke_img.split()[3], lambda x: int(x * sa)))
+            frame.paste(stroke_img, (30, illust_y), stroke_img)
+
+        # Phase 3: Word section (5~6s)
+        if t >= 5.0:
+            a = min(1.0, (t - 5.0) / 0.5)
             temp = word_sec.copy()
-            if a < 1: temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x*a)))
+            if a < 1:
+                temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x * a)))
             frame.paste(temp, (30, word_y), temp)
 
-        if t >= 3.0:
-            a = min(1.0, (t-3.0)/0.5)
-            yo = int((1-a)*25)
+        # Phase 4: Example section (6.5~7s)
+        if t >= 6.5:
+            a = min(1.0, (t - 6.5) / 0.5)
+            yo = int((1 - a) * 25)
             temp = example_sec.copy()
-            if a < 1: temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x*a)))
-            frame.paste(temp, (40, ex_y+yo), temp)
+            if a < 1:
+                temp.putalpha(Image.eval(temp.split()[3], lambda x: int(x * a)))
+            frame.paste(temp, (40, ex_y + yo), temp)
 
         frame.save(f'{output_dir}/f_{i:04d}.png')
 
@@ -372,12 +482,15 @@ def create_chime_audio(filepath):
         frames = []
         for i in range(n):
             t = i/sr; v = 0
-            if 0.6<=t<=1.2:
-                e=math.exp(-(t-0.6)*5); v+=int(6000*e*math.sin(2*math.pi*523*t))+int(3000*e*math.sin(2*math.pi*659*t))
-            if 1.8<=t<=2.4:
-                e=math.exp(-(t-1.8)*5); v+=int(5000*e*math.sin(2*math.pi*659*t))
-            if 3.0<=t<=3.6:
-                e=math.exp(-(t-3.0)*6); v+=int(4000*e*math.sin(2*math.pi*784*t))
+            # Soft chime at stroke animation start (2.0s)
+            if 2.0<=t<=2.6:
+                e=math.exp(-(t-2.0)*5); v+=int(4000*e*math.sin(2*math.pi*440*t))
+            # Word reveal chime (5.0s)
+            if 5.0<=t<=5.6:
+                e=math.exp(-(t-5.0)*5); v+=int(6000*e*math.sin(2*math.pi*523*t))+int(3000*e*math.sin(2*math.pi*659*t))
+            # Example reveal chime (6.5s)
+            if 6.5<=t<=7.1:
+                e=math.exp(-(t-6.5)*6); v+=int(4000*e*math.sin(2*math.pi*784*t))
             frames.append(struct.pack('<h', max(-32767,min(32767,v))))
         w.writeframes(b''.join(frames))
 
@@ -416,13 +529,13 @@ def create_combined_audio(word_mp3, example_mp3, output_wav):
         inputs.extend(['-i', word_mp3])
         word_idx = next_idx
         next_idx += 1
-        filters.append(f'[{word_idx}]adelay=600|600[word]')
+        filters.append(f'[{word_idx}]adelay=5000|5000[word]')
 
     if has_example:
         inputs.extend(['-i', example_mp3])
         ex_idx = next_idx
         next_idx += 1
-        filters.append(f'[{ex_idx}]adelay=3000|3000[ex]')
+        filters.append(f'[{ex_idx}]adelay=6500|6500[ex]')
 
     # Mix all tracks together (normalize=0 prevents volume division by input count)
     if has_word and has_example:
@@ -481,6 +594,10 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
     word_sec = create_word_section(word_data['korean'], word_data.get('pronunciation',''), word_data.get('meaning_khmer',''))
     example_sec = create_example_section(word_data.get('example_kr',''), word_data.get('example_khmer',''), word_data['korean'])
 
+    # Pre-render stroke animation steps (jamo decomposition)
+    stroke_steps = prerender_stroke_steps(word_data['korean'], illust.size[0], illust.size[1])
+    print(f"  Stroke animation: {len(stroke_steps)} jamo steps for '{word_data['korean']}'", file=sys.stderr)
+
     layout = compute_layout(illust_h=illust.size[1], word_sec_h=word_sec.size[1], example_h=example_sec.size[1])
     print(f"  Layout: card_h={layout['card_h']}, illust_y={layout['illust_y']}, word_y={layout['word_y']}, ex_y={layout['ex_y']}, brand_y={layout['brand_y']}", file=sys.stderr)
 
@@ -488,7 +605,7 @@ def generate_single_card(word_data, day_number, emoji_str, custom_path, supabase
 
     tmp = tempfile.mkdtemp()
     try:
-        generate_frames(base, illust, word_sec, example_sec, tmp, layout)
+        generate_frames(base, illust, word_sec, example_sec, tmp, layout, stroke_steps)
 
         audio_path = os.path.join(tmp, 'audio.wav')
         word_mp3 = os.path.join(tmp, 'word.mp3')
@@ -537,10 +654,24 @@ if __name__ == '__main__':
         word_sec = create_word_section(word_data['korean'], word_data['pronunciation'], word_data['meaning_khmer'])
         example_sec = create_example_section(word_data['example_kr'], word_data['example_khmer'], word_data['korean'])
 
+        # Stroke animation test
+        stroke_steps = prerender_stroke_steps(word_data['korean'], illust.size[0], illust.size[1])
+        jamo_steps = get_jamo_steps(word_data['korean'])
+        print(f"  Stroke steps ({len(stroke_steps)}): {jamo_steps}", file=sys.stderr)
+
         layout = compute_layout(illust_h=illust.size[1], word_sec_h=word_sec.size[1], example_h=example_sec.size[1])
         print(f"  Layout: {layout}", file=sys.stderr)
 
         base = create_base_card(args.day, layout['card_h'], layout['brand_y'])
+
+        # Save stroke animation mid-frame (shows jamo construction)
+        if stroke_steps and len(stroke_steps) > 1:
+            mid_idx = len(stroke_steps) // 2
+            stroke_frame = base.copy()
+            stroke_frame.paste(stroke_steps[mid_idx], (30, layout['illust_y']), stroke_steps[mid_idx])
+            stroke_out = os.path.join(ROOT_DIR, args.output.replace('.png', '_stroke.png'))
+            stroke_frame.save(stroke_out, 'PNG')
+            print(f"  Stroke frame saved: {stroke_out}", file=sys.stderr)
 
         # 최종 프레임 (모든 요소 표시)
         frame = base.copy()
