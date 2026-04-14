@@ -89,17 +89,29 @@ def _imagemagick_render_khmer(text, font_path, font_size, fill_color, max_width=
         tmp_path = tmp.name
 
     try:
+        # Use pango: instead of label: for proper Khmer complex script shaping
+        # Extract font family name from path for Pango markup
+        font_basename = os.path.basename(font_path).replace('.ttf', '').replace('.otf', '')
+        # Map known font files to Pango font family names
+        font_family_map = {
+            'Battambang-Bold': 'Battambang Bold',
+            'Battambang-Regular': 'Battambang',
+            'Battambang': 'Battambang',
+        }
+        pango_font = font_family_map.get(font_basename, 'Battambang Bold')
+
+        # Escape XML special chars for Pango markup
+        escaped_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        pango_markup = f"<span font='{pango_font} {font_size}' foreground='{fill_color}'>{escaped_text}</span>"
+
         cmd = [
             'convert',
             '-background', 'none',
-            '-fill', fill_color,
-            '-font', font_path,
-            '-pointsize', str(font_size),
             '-gravity', 'NorthWest',
         ]
         if max_width:
             cmd.extend(['-size', f'{max_width}x'])
-        cmd.extend([f'label:{text}', tmp_path])
+        cmd.extend([f'pango:{pango_markup}', tmp_path])
 
         result = subprocess.run(cmd, capture_output=True, timeout=10)
         if result.returncode != 0:
