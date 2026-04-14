@@ -37,7 +37,7 @@ def generate_countdown_card(today_str, output_path):
     today = date.fromisoformat(today_str)
     d_day = (TOPIK_DATE - today).days
 
-    W, H = 760, 900
+    W, H = 760, 620
 
     # Load fonts
     kr_bold_path = find_font('kr_bold')
@@ -90,50 +90,28 @@ def generate_countdown_card(today_str, output_path):
     d_y = 160
     draw.text((d_x, d_y), d_text, font=fonts['huge'], fill='#C62828')
 
-    # Exam date (small, in parentheses below D-day)
-    exam_info = "시험일 (2026년 5월 17일 일요일)"
-    bb_ei = draw.textbbox((0, 0), exam_info, font=fonts['sm'])
-    draw.text(((W - (bb_ei[2] - bb_ei[0])) // 2, d_y + dh + 30), exam_info, font=fonts['sm'], fill='#888888')
-
     # Decorative line
-    line_y = d_y + dh + 80
+    line_y = d_y + dh + 30
     draw.line([(100, line_y), (W - 100, line_y)], fill='#D4A843', width=3)
 
-    # Decorative line 2 (for spacing before motivational message)
-    line2_y = line_y + 30
-
-    # Motivational message
+    # Motivational message (Korean)
     msg_kr = "매일 30단어, 꾸준히 하면 합격!"
     msg_km = "រៀនពាក្យ ៣០ រាល់ថ្ងៃ ជាប់ប្រាកដ!"
 
-    msg_y = line2_y + 35
+    msg_y = line_y + 50
     bb_mk = draw.textbbox((0, 0), msg_kr, font=fonts['mid'])
     draw.text(((W - (bb_mk[2] - bb_mk[0])) // 2, msg_y), msg_kr, font=fonts['mid'], fill='#C62828')
 
+    # Motivational message (Khmer)
     msg_km_y = msg_y + 50
     bb_mm = draw.textbbox((0, 0), msg_km, font=fonts['km'])
     draw.text(((W - (bb_mm[2] - bb_mm[0])) // 2, msg_km_y), msg_km, font=fonts['km'], fill='#555555')
 
-    # Progress indicator (days completed)
-    prog_y = msg_km_y + 70
-    # Calculate study day based on 35-day program
-    study_day = max(0, 35 - d_day + (TOPIK_DATE - date(2026, 5, 17)).days)
-    # Simplified: just show remaining days visually
-    bar_w = 500
-    bar_x = (W - bar_w) // 2
-    bar_h = 30
-
-    prog_label = f"D-{d_day}" if d_day > 0 else "D-Day"
-    bb_pl = draw.textbbox((0, 0), prog_label, font=fonts['xs'])
-    draw.text(((W - (bb_pl[2] - bb_pl[0])) // 2, prog_y), prog_label, font=fonts['xs'], fill='#888888')
-
-    bar_y = prog_y + 30
-    draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), 15, fill='#E0E0E0')
-    # Progress: from 35 days out to exam day
-    progress = max(0, min(1, (35 - d_day) / 35)) if d_day <= 35 else 0
-    filled = int(bar_w * progress)
-    if filled > 0:
-        draw.rounded_rectangle((bar_x, bar_y, bar_x + filled, bar_y + bar_h), 15, fill='#C62828')
+    # Exam date (below Khmer message)
+    exam_info = "시험일 (2026년 5월 17일 일요일)"
+    exam_y = msg_km_y + 60
+    bb_ei = draw.textbbox((0, 0), exam_info, font=fonts['sm'])
+    draw.text(((W - (bb_ei[2] - bb_ei[0])) // 2, exam_y), exam_info, font=fonts['sm'], fill='#888888')
 
     # VERI-K logo branding
     script_dir = os.path.dirname(os.path.abspath(__file__))
