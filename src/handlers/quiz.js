@@ -59,7 +59,13 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
     );
     questions = [...wordQ, ...listeningQ];
   } else {
-    // 평일: 복습 5 + 오늘 단어 10 + 듣기 5
+    // 평일: 오늘 단어 15 + 복습 5 = 20문제
+    const { data: todayWords } = await supabase
+      .from('words')
+      .select('*')
+      .eq('day_number', dayNumber)
+      .order('id');
+
     const { data: wrongWords } = await supabase
       .from('wrong_word_tracker')
       .select('word_id, words(*)')
@@ -70,20 +76,9 @@ async function startQuiz(bot, chatIdOrMsg, quizType = 'daily') {
 
     const reviewWords = wrongWords?.map(w => w.words).filter(Boolean) || [];
 
-    const { data: todayWords } = await supabase
-      .from('words')
-      .select('*')
-      .eq('day_number', dayNumber)
-      .order('id');
-
+    const todayQ = generateQuestions(todayWords || [], 15, allWords, 'word');
     const reviewQ = generateQuestions(reviewWords, 5, allWords, 'word');
-    const todayQ = generateQuestions(todayWords || [], 10, allWords, 'word');
-    const listeningPool = (todayWords || []).filter(w => w.example_audio_url || w.audio_url);
-    const listeningQ = generateQuestions(
-      listeningPool.length > 0 ? listeningPool : (todayWords || []),
-      5, allWords, 'listening'
-    );
-    questions = [...reviewQ, ...todayQ, ...listeningQ];
+    questions = [...todayQ, ...reviewQ];
   }
 
   if (questions.length === 0) {
