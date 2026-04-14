@@ -173,21 +173,24 @@ async function sendEveningQuiz(bot) {
       const startD = new Date(student.start_date + 'T00:00:00');
       if (startD > today) continue;
 
-      // 안내 메시지 + 시작 버튼
+      // 안내 메시지 + 시작 버튼 (단어 퀴즈 + 듣기 퀴즈)
       await bot.sendMessage(student.id,
         `📝 ដល់ពេលធ្វើតេស្តហើយ! 🎯\n\n` +
         (isWeekend
           ? `📚 ពាក្យ ${qCount} សំណួរ (ពិនិត្យឡើងវិញប្រចាំសប្តាហ៍)\n` +
             `(주간 복습 ${qCount}문제)\n\n`
           : `📚 ពាក្យ 10 + 🔄 ពិនិត្យ 5 = ${qCount} សំណួរ\n` +
-            `(오늘 단어 10 + 복습 5 = ${qCount}문제)\n\n`) +
+            `🎧 ស្តាប់ 5 សំណួរ (듣기 5문제)\n` +
+            `(오늘 단어 10 + 복습 5 + 듣기 5)\n\n`) +
         `ចុចប៊ូតុងខាងក្រោមដើម្បីចាប់ផ្តើម!`,
         {
           reply_markup: {
-            inline_keyboard: [[
-              { text: '📝 ចាប់ផ្តើម! (시작)',
-                callback_data: isWeekend ? 'quiz_start_weekly' : 'quiz_start_daily' }
-            ]]
+            inline_keyboard: [
+              [{ text: '📝 ពាក្យ (단어 퀴즈)',
+                callback_data: isWeekend ? 'quiz_start_weekly' : 'quiz_start_daily' }],
+              [{ text: '🎧 ស្តាប់ (듣기 퀴즈)',
+                callback_data: 'lquiz_start' }]
+            ]
           }
         }
       );

@@ -91,20 +91,23 @@ CREATE TABLE wrong_word_tracker (
 
 CREATE INDEX idx_wrong_student ON wrong_word_tracker(student_id, is_mastered);
 
--- 7. 듣기 문제 테이블
+-- 7. 듣기 문제 테이블 (세종한국어 듣기)
+-- day_number = day_assignment (1-33, 하루 5문제)
+-- question_type = book ('sejong_1_practice', 'sejong_2_practice')
+-- transcript_kr = JSON metadata {unit, question_number, audio_filename, audio_source}
 CREATE TABLE listening_questions (
   id SERIAL PRIMARY KEY,
-  day_number INT NOT NULL,
-  question_type TEXT NOT NULL,        -- 'daily', 'weekly'
-  audio_url TEXT NOT NULL,
-  transcript_kr TEXT NOT NULL,
+  day_number INT NOT NULL,            -- day_assignment (1-33)
+  question_type TEXT NOT NULL,        -- book name
+  audio_url TEXT,                     -- Supabase Storage URL
+  transcript_kr TEXT,                 -- JSON metadata
   question_text TEXT NOT NULL,
   option_a TEXT NOT NULL,
   option_b TEXT NOT NULL,
   option_c TEXT NOT NULL,
   option_d TEXT NOT NULL,
   correct_answer TEXT NOT NULL,       -- 'A', 'B', 'C', 'D'
-  is_approved BOOLEAN DEFAULT FALSE,  -- Peter 검증 완료
+  is_approved BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

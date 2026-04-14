@@ -415,33 +415,234 @@ async function sendQuizResultToAdmin(bot, studentId, session, correct, total, pc
   }
 }
 
-// ── 듣기 문제 콜백 처리 ──
+// ══════════════════════════════════════════════
+// 듣기 퀴즈 시스템 (listening_questions 테이블 기반)
+// ══════════════════════════════════════════════
+
+// ── 듣기 퀴즈 시작 ──
+async function startListeningQuiz(bot, chatIdOrMsg) {
+  const chatId = typeof chatIdOrMsg === 'object' ? chatIdOrMsg.chat.id : chatIdOrMsg;
+
+  const { data: student } = await supabase
+    .from('students')
+    .select('current_day, start_date, first_name')
+    .eq('id', chatId)
+    .single();
+
+  if (!student) {
+    return bot.sendMessage(chatId,
+      `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
+  }
+
+  const dayNumber = student.start_date
+    ? calcCurrentDay(student.start_date)
+    : student.current_day;
+
+  // listening_questions 테이블에서 해당 day 문제 가져오기
+  // day_number = day_assignment, is_approved = true
+  const { data: questions } = await supabase
+    .from('listening_questions')
+    .select('*')
+    .eq('day_number', dayNumber)
+    .eq('is_approved', true)
+    .order('id');
+
+  if (!questions || questions.length === 0) {
+    return bot.sendMessage(chatId,
+      `🎧 ថ្ងៃនេះមិនមានសំណួរស្តាប់ទេ។\n(오늘 듣기 문제가 없습니다.)`);
+  }
+
+  // 5문제만 선택 (day_assignment 기준으로 이미 5개일 수 있지만 안전장치)
+  const selected = questions.slice(0, 5);
+
+  await bot.sendMessage(chatId,
+    `🎧 តេស្តស្តាប់ថ្ងៃនេះ: ${selected.length} សំណួរ\n` +
+    `(듣기 퀴즈 ${selected.length}문제)\n\n` +
+    `📋 សូមអានសំណួរ → ស្តាប់សំឡេង → ជ្រើសចម្លើយ\n` +
+    `(문제 읽기 → 음성 듣기 → 답 선택)\n\n` +
+    `💪 ចាប់ផ្តើម!`
+  );
+
+  // 세션 생성
+  const { data: session } = await supabase
+    .from('quiz_sessions')
+    .insert({
+      student_id: chatId,
+      day_number: dayNumber,
+      quiz_type: 'listening',
+      total_questions: selected.length
+    })
+    .select()
+    .single();
+
+  // 문제 데이터를 세션에 저장
+  const questionsData = selected.map(q => ({
+    id: q.id,
+    audio_url: q.audio_url,
+    question_text: q.question_text,
+    options: [q.option_a, q.option_b, q.option_c, q.option_d],
+    correct_answer: q.correct_answer // 'A', 'B', 'C', 'D'
+  }));
+
+  await supabase.from('admin_config').upsert({
+    key: `lquiz_data_${session.id}`,
+    value: JSON.stringify(questionsData),
+    updated_at: new Date().toISOString()
+  });
+
+  // 첫 문제 전송
+  await sendListeningQuestion(bot, chatId, session.id, questionsData, 0);
+}
+
+// ── 듣기 문제 전송 (문제+보기 → 음성 → 답 대기) ──
+async function sendListeningQuestion(bot, chatId, sessionId, questions, index) {
+  const q = questions[index];
+  const labels = ['A', 'B', 'C', 'D'];
+  const correctIdx = labels.indexOf(q.correct_answer);
+
+  // Step 1: 문제 텍스트 + 보기 전송
+  let text = `🎧 ${index + 1}/${questions.length}\n\n`;
+  text += `${q.question_text}\n\n`;
+  text += q.options.map((opt, i) => `${labels[i]}. ${opt}`).join('\n');
+
+  await bot.sendMessage(chatId, text);
+
+  // Step 2: 음성 전송
+  if (q.audio_url) {
+    try {
+      await bot.sendVoice(chatId, q.audio_url, {
+        caption: '🔊 សូមស្តាប់រួចជ្រើសចម្លើយ (음성을 듣고 답을 선택하세요)'
+      });
+    } catch (err) {
+      console.error(`Voice send error for question ${q.id}:`, err.message);
+      await bot.sendMessage(chatId, `⚠️ សំឡេងមិនអាចបើកបាន (음성 재생 불가)`);
+    }
+  }
+
+  // Step 3: 답 선택 버튼
+  const keyboard = {
+    inline_keyboard: q.options.map((opt, i) => [{
+      text: `${labels[i]}. ${opt}`,
+      callback_data: `lquiz_${sessionId}_${index}_${i}_${correctIdx}_${q.id}`
+    }])
+  };
+
+  await bot.sendMessage(chatId, `❓ ជ្រើសចម្លើយ / 답을 선택하세요:`, { reply_markup: keyboard });
+}
+
+// ── 듣기 퀴즈 콜백 처리 ──
 async function handleListeningCallback(bot, query) {
   const chatId = query.message.chat.id;
   const data = query.data;
 
-  // listen_questionId_selectedAnswer_correctAnswer
+  // lquiz_start → 듣기 퀴즈 시작
+  if (data === 'lquiz_start') {
+    await bot.answerCallbackQuery(query.id);
+    return startListeningQuiz(bot, chatId);
+  }
+
+  // lquiz_sessionId_qIndex_selected_correct_questionId
   const parts = data.split('_');
-  const questionId = parseInt(parts[1]);
-  const selected = parts[2];
-  const correct = parts[3];
+  const sessionId = parseInt(parts[1]);
+  const qIndex = parseInt(parts[2]);
+  const selected = parseInt(parts[3]);
+  const correct = parseInt(parts[4]);
+  const questionId = parseInt(parts[5]);
 
   const isCorrect = selected === correct;
+  const labels = ['A', 'B', 'C', 'D'];
 
-  // 답변 저장
+  // 답변 저장 (listening_answers)
   await supabase.from('listening_answers').insert({
     student_id: chatId,
     question_id: questionId,
-    student_answer: selected,
+    student_answer: labels[selected],
     is_correct: isCorrect
   });
 
-  const feedback = isCorrect
-    ? `✅ 정답! / ត្រឹមត្រូវ!`
-    : `❌ 오답! 정답: ${correct}`;
+  // 세션 점수 업데이트
+  if (isCorrect) {
+    const { data: currentSession } = await supabase
+      .from('quiz_sessions')
+      .select('correct_answers')
+      .eq('id', sessionId)
+      .single();
 
-  await bot.answerCallbackQuery(query.id, { text: feedback, show_alert: true });
-  await bot.sendMessage(chatId, feedback);
+    await supabase
+      .from('quiz_sessions')
+      .update({ correct_answers: (currentSession?.correct_answers || 0) + 1 })
+      .eq('id', sessionId);
+  }
+
+  // 피드백
+  let feedback;
+  if (isCorrect) {
+    feedback = `✅ ត្រឹមត្រូវ! / 정답! (${labels[correct]})`;
+  } else {
+    feedback = `❌ មិនត្រឹមត្រូវ / 오답\n정답: ${labels[correct]}`;
+  }
+
+  // 문제 데이터 가져오기
+  const { data: configData } = await supabase
+    .from('admin_config')
+    .select('value')
+    .eq('key', `lquiz_data_${sessionId}`)
+    .single();
+
+  const questions = configData ? JSON.parse(configData.value) : [];
+  const nextIndex = qIndex + 1;
+
+  await bot.answerCallbackQuery(query.id);
+
+  if (nextIndex < questions.length) {
+    // 피드백 + 다음 문제
+    await bot.sendMessage(chatId, feedback);
+    await sendListeningQuestion(bot, chatId, sessionId, questions, nextIndex);
+  } else {
+    // 퀴즈 완료
+    const { data: session } = await supabase
+      .from('quiz_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+
+    const totalCorrect = (session?.correct_answers || 0) + (isCorrect ? 1 : 0);
+    const totalQ = questions.length;
+    const pct = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
+
+    await supabase.from('quiz_sessions').update({
+      correct_answers: totalCorrect,
+      is_completed: true,
+      completed_at: new Date().toISOString()
+    }).eq('id', sessionId);
+
+    // 활동 기록
+    await supabase.from('daily_activity').upsert({
+      student_id: chatId,
+      activity_date: new Date().toISOString().split('T')[0],
+      listening_completed: true
+    }, { onConflict: 'student_id, activity_date' });
+
+    // 임시 데이터 정리
+    await supabase.from('admin_config').delete().eq('key', `lquiz_data_${sessionId}`);
+
+    let emoji = pct >= 90 ? '🏆' : pct >= 70 ? '👏' : pct >= 50 ? '💪' : '📚';
+    let khmerMsg = pct >= 90 ? 'អស្ចារ្យ!' :
+                   pct >= 70 ? 'ល្អណាស់!' :
+                   pct >= 50 ? 'មិនអីទេ!' :
+                   'ខិតខំបន្ថែម!';
+
+    await bot.sendMessage(chatId, feedback);
+    await bot.sendMessage(chatId,
+      `${emoji} តេស្តស្តាប់រួចរាល់!\n\n` +
+      `📊 លទ្ធផល: ${totalCorrect}/${totalQ} (${pct}%)\n` +
+      `${khmerMsg}\n\n` +
+      `🎧 듣기 퀴즈 완료!`
+    );
+
+    // Admin 알림
+    await sendQuizResultToAdmin(bot, chatId, session, totalCorrect, totalQ, pct);
+  }
 }
 
-module.exports = { startQuiz, handleQuizCallback, handleListeningCallback };
+module.exports = { startQuiz, startListeningQuiz, handleQuizCallback, handleListeningCallback };

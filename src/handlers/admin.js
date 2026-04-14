@@ -45,13 +45,20 @@ async function handleAdminCommand(bot, msg) {
   const { count: ttsReady } = await supabase
     .from('words').select('id', { count: 'exact' }).not('audio_url', 'is', null);
 
+  const { count: listeningCount } = await supabase
+    .from('listening_questions').select('id', { count: 'exact' }).eq('is_approved', true);
+
+  const { count: listeningWithAudio } = await supabase
+    .from('listening_questions').select('id', { count: 'exact' }).not('audio_url', 'is', null);
+
   await bot.sendMessage(msg.chat.id,
     `🔧 VERI-K Admin Dashboard\n\n` +
     `👥 Active students: ${studentCount}\n` +
     `📝 Quizzes today: ${todayQuizzes}\n` +
     `📊 Avg score: ${avgScore}%\n` +
     `🎨 Cards ready: ${cardsReady} / 1207\n` +
-    `🔊 TTS ready: ${ttsReady} / 1207\n\n` +
+    `🔊 TTS ready: ${ttsReady} / 1207\n` +
+    `🎧 Listening: ${listeningCount} questions (${listeningWithAudio} with audio)\n\n` +
     `Commands:\n` +
     `/run_pipeline - Full pipeline (illustrations+TTS+motion)\n` +
     `/pipeline_status - Pipeline progress\n` +
@@ -60,6 +67,7 @@ async function handleAdminCommand(bot, msg) {
     `/reply [id] [msg] - Reply to a student\n` +
     `/generate_images [day] - Generate illustrations\n` +
     `/image_status - Image generation status\n` +
+    `/listening - Test listening quiz\n` +
     `/admin - This dashboard`
   );
 }

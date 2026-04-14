@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
 const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
-const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
+const { handleQuizCallback, handleListeningCallback, startListeningQuiz } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
 const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateMotionAll, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, handleTestCountdown, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
@@ -46,6 +46,7 @@ console.log('🤖 VERI-K Bot started!');
 // ── 학생 명령어 ──
 bot.onText(/\/start/, (msg) => handleStart(bot, msg));
 bot.onText(/\/quiz/, (msg) => handleCommand(bot, msg, 'quiz'));
+bot.onText(/\/listening/, (msg) => startListeningQuiz(bot, msg));
 bot.onText(/\/progress/, (msg) => handleCommand(bot, msg, 'progress'));
 bot.onText(/\/help/, (msg) => handleCommand(bot, msg, 'help'));
 
@@ -84,6 +85,8 @@ bot.on('callback_query', async (query) => {
   const data = query.data;
   if (data.startsWith('quiz_')) {
     await handleQuizCallback(bot, query);
+  } else if (data.startsWith('lquiz_')) {
+    await handleListeningCallback(bot, query);
   } else if (data.startsWith('listen_')) {
     await handleListeningCallback(bot, query);
   } else if (data.startsWith('tts_')) {
