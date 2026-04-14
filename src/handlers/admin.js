@@ -1,4 +1,7 @@
 const { supabase } = require('../config/supabase');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const ADMIN_IDS = process.env.ADMIN_IDS?.split(',').map(Number) || [];
 
@@ -1041,6 +1044,70 @@ async function handleNotifyUpgrade(bot, msg) {
   );
 }
 
+// ── /test_countdown: 카운트다운 카드 테스트 ──
+let _pythonCmd = null;
+function getPythonCmd() {
+  if (_pythonCmd) return _pythonCmd;
+  for (const cmd of ['python3', 'python']) {
+    try {
+      execSync(`${cmd} --version`, { stdio: 'ignore' });
+      _pythonCmd = cmd;
+      return cmd;
+    } catch {}
+  }
+  _pythonCmd = 'python3';
+  return _pythonCmd;
+}
+
+async function handleTestCountdown(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const adminChatId = process.env.ADMIN_CHAT_ID || msg.chat.id;
+
+  try {
+    await bot.sendMessage(adminChatId, '⏳ 카운트다운 카드 생성 중...');
+
+    // 캄보디아 시간 기준 오늘 날짜 (UTC+7)
+    const now = new Date();
+    const cambodiaTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const todayStr = cambodiaTime.toISOString().split('T')[0];
+
+    const tmpDir = '/tmp/verik-countdown';
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const outputPath = path.join(tmpDir, `countdown_${todayStr}.png`);
+
+    const python = getPythonCmd();
+    execSync(
+      `${python} scripts/generate_countdown_card.py '${todayStr}' '${outputPath}'`,
+      { timeout: 30000, cwd: process.cwd(), stdio: 'inherit' }
+    );
+
+    if (!fs.existsSync(outputPath)) {
+      return bot.sendMessage(adminChatId, '❌ 카운트다운 카드 생성 실패');
+    }
+
+    // TOPIK 시험일까지 남은 일수 계산
+    const topikDate = new Date('2026-05-17');
+    const today = new Date(todayStr);
+    const dDay = Math.ceil((topikDate - today) / (1000 * 60 * 60 * 24));
+    const dText = dDay > 0 ? `D-${dDay}` : dDay === 0 ? 'D-Day!' : `D+${Math.abs(dDay)}`;
+
+    await bot.sendPhoto(adminChatId, fs.readFileSync(outputPath), {
+      caption: `📅 TOPIK I 카운트다운 ${dText}\n${todayStr}`
+    });
+
+    // 임시 파일 정리
+    try { fs.unlinkSync(outputPath); } catch {}
+
+    console.log(`✅ Countdown card sent: ${dText} (${todayStr})`);
+  } catch (err) {
+    console.error('Countdown card error:', err.message);
+    await bot.sendMessage(adminChatId, `❌ 카운트다운 카드 오류: ${err.message}`);
+  }
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -1061,6 +1128,7 @@ module.exports = {
   handleRunPipeline,
   handlePipelineStatus,
   handleNotifyUpgrade,
+  handleTestCountdown,
   isAdmin,
   ADMIN_IDS
 };
