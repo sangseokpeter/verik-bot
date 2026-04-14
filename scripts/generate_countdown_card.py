@@ -90,15 +90,11 @@ def generate_countdown_card(today_str, output_path):
     d_y = 160
     draw.text((d_x, d_y), d_text, font=fonts['huge'], fill='#C62828')
 
-    # Decorative line
-    line_y = d_y + dh + 30
-    draw.line([(100, line_y), (W - 100, line_y)], fill='#D4A843', width=3)
-
     # Motivational message (Korean)
     msg_kr = "매일 30단어, 꾸준히 하면 합격!"
     msg_km = "រៀនពាក្យ ៣០ រាល់ថ្ងៃ ជាប់ប្រាកដ!"
 
-    msg_y = line_y + 50
+    msg_y = d_y + dh + 50
     bb_mk = draw.textbbox((0, 0), msg_kr, font=fonts['mid'])
     draw.text(((W - (bb_mk[2] - bb_mk[0])) // 2, msg_y), msg_kr, font=fonts['mid'], fill='#C62828')
 
@@ -120,7 +116,7 @@ def generate_countdown_card(today_str, output_path):
         logo_path = '/app/assets/verik_logo.png'
     if os.path.exists(logo_path):
         logo = Image.open(logo_path).convert('RGBA')
-        logo_h = 60
+        logo_h = 120
         logo_w = int(logo.width * logo_h / logo.height)
         logo = logo.resize((logo_w, logo_h), Image.LANCZOS)
         logo_x = (W - logo_w) // 2
