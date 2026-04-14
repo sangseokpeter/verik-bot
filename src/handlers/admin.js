@@ -383,6 +383,92 @@ async function handleGenerateMotion(bot, msg, dayArg) {
   });
 }
 
+// ── /generate_motion_all [--force] — Day 1~35 전체 모션카드 순차 생성 ──
+async function handleGenerateMotionAll(bot, msg, forceFlag) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  const force = forceFlag === '--force';
+  await bot.sendMessage(msg.chat.id,
+    `🎬 Starting motion cards for Day 1~35${force ? ' (--force: regenerating all)' : ' (skipping days with existing MP4s)'}...\n(Running in background — bot stays responsive)`
+  );
+
+  const { spawn, execSync } = require('child_process');
+  const path = require('path');
+  let py = 'python3';
+  try { execSync('python3 --version', { stdio: 'ignore' }); } catch {
+    try { execSync('python --version', { stdio: 'ignore' }); py = 'python'; } catch {}
+  }
+  const cwd = path.resolve(__dirname, '../..');
+
+  let totalDone = 0;
+  let totalErrors = 0;
+  let totalSkipped = 0;
+
+  for (let day = 1; day <= 35; day++) {
+    // Check if all words in this day already have video_url
+    if (!force) {
+      const { data: words, error: dbErr } = await supabase
+        .from('words')
+        .select('id, video_url')
+        .eq('day_number', day);
+
+      if (dbErr) {
+        await bot.sendMessage(msg.chat.id, `⚠️ Day ${day}: DB error checking existing videos — generating anyway.`);
+      } else if (words && words.length > 0 && words.every(w => w.video_url)) {
+        totalSkipped++;
+        continue;
+      }
+    }
+
+    // Spawn batch_generate_all.py for this day
+    const result = await new Promise((resolve) => {
+      const child = spawn(py, ['scripts/batch_generate_all.py', String(day)], {
+        cwd, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (chunk) => {
+        const text = chunk.toString();
+        console.log('[motion-all stdout]', text);
+        stdout += text;
+      });
+
+      child.stderr.on('data', (chunk) => {
+        const text = chunk.toString();
+        console.error('[motion-all stderr]', text);
+        stderr += text;
+      });
+
+      child.on('close', (code) => resolve({ code, stdout, stderr }));
+      child.on('error', (err) => resolve({ code: -1, stdout: '', stderr: err.message }));
+    });
+
+    if (result.code === 0) {
+      // Parse success/error counts from output
+      const doneMatch = result.stdout.match(/DONE:\s*(\d+)\/\d+\s*success,\s*(\d+)\s*errors/);
+      const dayDone = doneMatch ? parseInt(doneMatch[1]) : 0;
+      const dayErrors = doneMatch ? parseInt(doneMatch[2]) : 0;
+      totalDone += dayDone;
+      totalErrors += dayErrors;
+      await bot.sendMessage(msg.chat.id,
+        `✅ Day ${day}/35 complete — ${dayDone} cards generated${dayErrors > 0 ? `, ${dayErrors} errors` : ''} (skipped: ${totalSkipped})`
+      );
+    } else {
+      totalErrors++;
+      const errTail = result.stderr.slice(-200) || result.stdout.slice(-200) || `exit code ${result.code}`;
+      await bot.sendMessage(msg.chat.id, `❌ Day ${day}/35 failed: ${errTail}`);
+    }
+  }
+
+  await bot.sendMessage(msg.chat.id,
+    `🏁 Motion card generation complete!\n✅ ${totalDone} cards generated\n⏭️ ${totalSkipped} days skipped (already had MP4)\n❌ ${totalErrors} errors`
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Gemini 이미지 생성 + 어드민 검수 플로우
 // ═══════════════════════════════════════════════════════════════════
@@ -965,6 +1051,7 @@ module.exports = {
   handleReply,
   handleStats,
   handleGenerateMotion,
+  handleGenerateMotionAll,
   handleGenerateImages,
   handleGenerateImagesAll,
   handleApproveImages,

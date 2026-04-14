@@ -4,7 +4,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, isAdmin } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateMotionAll, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -57,6 +57,7 @@ bot.onText(/\/generate_tts (\d+)/, (msg, match) => handleGenerateTTS(bot, msg, m
 bot.onText(/\/generate_all/, (msg) => handleGenerateAll(bot, msg));
 bot.onText(/\/reply (\d+) (.+)/, (msg, match) => handleReply(bot, msg, match[1], match[2]));
 bot.onText(/\/stats/, (msg) => handleStats(bot, msg));
+bot.onText(/\/generate_motion_all(?:\s+(--force))?/, (msg, match) => handleGenerateMotionAll(bot, msg, match?.[1]));
 bot.onText(/\/generate_motion(?:\s+(\d+))?/, (msg, match) => handleGenerateMotion(bot, msg, match[1]));
 
 // ── Gemini 이미지 생성 + 검수 플로우 ──
