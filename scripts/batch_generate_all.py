@@ -21,17 +21,30 @@ def load_json(filename):
         return json.load(f)
 
 def fetch_words(day_number=None):
+    """Fetch words from Supabase, paginating to bypass 1000-row PostgREST limit."""
     url = f'{SUPABASE_URL}/rest/v1/words'
     params = 'select=*&order=day_number,sort_order'
     if day_number:
         params += f'&day_number=eq.{day_number}'
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {SUPABASE_KEY}',
-        'Range': '0-9999'
-    }
-    r = requests.get(f'{url}?{params}', headers=headers, timeout=30)
-    return r.json()
+
+    all_rows = []
+    page_size = 500
+    offset = 0
+    while True:
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Range': f'{offset}-{offset + page_size - 1}'
+        }
+        r = requests.get(f'{url}?{params}', headers=headers, timeout=30)
+        rows = r.json()
+        if not isinstance(rows, list) or len(rows) == 0:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 def upload_to_storage(filepath, storage_path):
     url = f'{SUPABASE_URL}/storage/v1/object/word-cards/{storage_path}'

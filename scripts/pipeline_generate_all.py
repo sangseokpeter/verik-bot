@@ -128,17 +128,29 @@ def emit(event):
 
 
 def fetch_words():
-    """Fetch all words from Supabase, ordered by day/sort."""
+    """Fetch all words from Supabase, paginating to bypass 1000-row PostgREST limit."""
     import requests as req
-    url = f"{SUPABASE_URL}/rest/v1/words?select=id,day_number,sort_order,korean,meaning_khmer,category&order=day_number.asc,sort_order.asc&limit=2000"
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {SUPABASE_KEY}',
-    }
-    r = req.get(url, headers=headers, timeout=30)
-    if r.status_code != 200:
-        raise RuntimeError(f"Supabase fetch failed: {r.status_code} {r.text[:200]}")
-    return r.json()
+    base_url = f"{SUPABASE_URL}/rest/v1/words?select=id,day_number,sort_order,korean,meaning_khmer,category&order=day_number.asc,sort_order.asc"
+    all_rows = []
+    page_size = 500
+    offset = 0
+    while True:
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Range': f'{offset}-{offset + page_size - 1}'
+        }
+        r = req.get(base_url, headers=headers, timeout=30)
+        if r.status_code not in (200, 206):
+            raise RuntimeError(f"Supabase fetch failed: {r.status_code} {r.text[:200]}")
+        rows = r.json()
+        if not isinstance(rows, list) or len(rows) == 0:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 
 def load_prompts():

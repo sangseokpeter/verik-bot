@@ -34,16 +34,31 @@ def emit(event):
 
 def fetch_words():
     import requests
-    url = (
+    base_url = (
         f"{SUPABASE_URL}/rest/v1/words?"
         f"select=id,day_number,sort_order,korean,pronunciation,meaning_khmer,category,example_kr,example_khmer,audio_url,example_audio_url,image_url"
-        f"&order=day_number.asc,sort_order.asc&limit=2000"
+        f"&order=day_number.asc,sort_order.asc"
     )
-    headers = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
-    r = requests.get(url, headers=headers, timeout=30)
-    if r.status_code != 200:
-        raise RuntimeError(f"Fetch failed: {r.status_code}")
-    return r.json()
+    all_rows = []
+    page_size = 500
+    offset = 0
+    while True:
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Range': f'{offset}-{offset + page_size - 1}'
+        }
+        r = requests.get(base_url, headers=headers, timeout=30)
+        if r.status_code not in (200, 206):
+            raise RuntimeError(f"Fetch failed: {r.status_code}")
+        rows = r.json()
+        if not isinstance(rows, list) or len(rows) == 0:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 
 def upload_video(mp4_bytes, storage_path):

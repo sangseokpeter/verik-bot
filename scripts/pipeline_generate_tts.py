@@ -29,12 +29,27 @@ def emit(event):
 
 def fetch_words():
     import requests
-    url = f"{SUPABASE_URL}/rest/v1/words?select=id,day_number,sort_order,korean,example_kr&order=day_number.asc,sort_order.asc&limit=2000"
-    headers = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
-    r = requests.get(url, headers=headers, timeout=30)
-    if r.status_code != 200:
-        raise RuntimeError(f"Fetch failed: {r.status_code}")
-    return r.json()
+    base_url = f"{SUPABASE_URL}/rest/v1/words?select=id,day_number,sort_order,korean,example_kr&order=day_number.asc,sort_order.asc"
+    all_rows = []
+    page_size = 500
+    offset = 0
+    while True:
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Range': f'{offset}-{offset + page_size - 1}'
+        }
+        r = requests.get(base_url, headers=headers, timeout=30)
+        if r.status_code not in (200, 206):
+            raise RuntimeError(f"Fetch failed: {r.status_code}")
+        rows = r.json()
+        if not isinstance(rows, list) or len(rows) == 0:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 
 def generate_tts(text, speed=0.75):
