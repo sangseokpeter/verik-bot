@@ -90,39 +90,17 @@ def generate_countdown_card(today_str, output_path):
     d_y = 160
     draw.text((d_x, d_y), d_text, font=fonts['huge'], fill='#C62828')
 
+    # Exam date (small, in parentheses below D-day)
+    exam_info = "시험일 (2026년 5월 17일 일요일)"
+    bb_ei = draw.textbbox((0, 0), exam_info, font=fonts['sm'])
+    draw.text(((W - (bb_ei[2] - bb_ei[0])) // 2, d_y + dh + 30), exam_info, font=fonts['sm'], fill='#888888')
+
     # Decorative line
-    line_y = d_y + dh + 50
+    line_y = d_y + dh + 80
     draw.line([(100, line_y), (W - 100, line_y)], fill='#D4A843', width=3)
 
-    # Exam date
-    exam_label = "시험일 (ថ្ងៃប្រឡង)"
-    exam_date_text = "2026년 5월 17일 (일)"
-
-    label_y = line_y + 30
-    bb_el = draw.textbbox((0, 0), exam_label, font=fonts['sm'])
-    draw.text(((W - (bb_el[2] - bb_el[0])) // 2, label_y), exam_label, font=fonts['sm'], fill='#888888')
-
-    exam_y = label_y + 40
-    bb_ed = draw.textbbox((0, 0), exam_date_text, font=fonts['big'])
-    draw.text(((W - (bb_ed[2] - bb_ed[0])) // 2, exam_y), exam_date_text, font=fonts['big'], fill='#1A1A1A')
-
-    # Today's date
-    today_label = "오늘 (ថ្ងៃនេះ)"
-    weekday_kr = ['월', '화', '수', '목', '금', '토', '일']
-    wd = weekday_kr[today.weekday()]
-    today_text = f"{today.year}년 {today.month}월 {today.day}일 ({wd})"
-
-    today_label_y = exam_y + 80
-    bb_tl = draw.textbbox((0, 0), today_label, font=fonts['sm'])
-    draw.text(((W - (bb_tl[2] - bb_tl[0])) // 2, today_label_y), today_label, font=fonts['sm'], fill='#888888')
-
-    today_y = today_label_y + 40
-    bb_td = draw.textbbox((0, 0), today_text, font=fonts['mid'])
-    draw.text(((W - (bb_td[2] - bb_td[0])) // 2, today_y), today_text, font=fonts['mid'], fill='#333333')
-
-    # Decorative line 2
-    line2_y = today_y + 60
-    draw.line([(100, line2_y), (W - 100, line2_y)], fill='#D4A843', width=3)
+    # Decorative line 2 (for spacing before motivational message)
+    line2_y = line_y + 30
 
     # Motivational message
     msg_kr = "매일 30단어, 꾸준히 하면 합격!"
@@ -157,10 +135,24 @@ def generate_countdown_card(today_str, output_path):
     if filled > 0:
         draw.rounded_rectangle((bar_x, bar_y, bar_x + filled, bar_y + bar_h), 15, fill='#C62828')
 
-    # VERI-K branding
-    brand = "VERI-K"
-    bb_br = draw.textbbox((0, 0), brand, font=fonts['mid'])
-    draw.text(((W - (bb_br[2] - bb_br[0])) // 2, H - 70), brand, font=fonts['mid'], fill='#D4A843')
+    # VERI-K logo branding
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_path = os.path.join(script_dir, '..', 'assets', 'verik_logo.png')
+    if not os.path.exists(logo_path):
+        logo_path = '/app/assets/verik_logo.png'
+    if os.path.exists(logo_path):
+        logo = Image.open(logo_path).convert('RGBA')
+        logo_h = 60
+        logo_w = int(logo.width * logo_h / logo.height)
+        logo = logo.resize((logo_w, logo_h), Image.LANCZOS)
+        logo_x = (W - logo_w) // 2
+        logo_y = H - logo_h - 25
+        img.paste(logo, (logo_x, logo_y), logo)
+    else:
+        # Fallback to text if logo not found
+        brand = "VERI-K"
+        bb_br = draw.textbbox((0, 0), brand, font=fonts['mid'])
+        draw.text(((W - (bb_br[2] - bb_br[0])) // 2, H - 70), brand, font=fonts['mid'], fill='#D4A843')
 
     img.save(output_path, 'PNG')
     print(f"OK:{output_path}")
