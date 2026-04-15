@@ -423,75 +423,99 @@ async function sendQuizResultToAdmin(bot, studentId, session, correct, total, pc
 async function startListeningQuiz(bot, chatIdOrMsg) {
   const chatId = typeof chatIdOrMsg === 'object' ? chatIdOrMsg.chat.id : chatIdOrMsg;
 
-  const { data: student } = await supabase
-    .from('students')
-    .select('current_day, start_date, first_name')
-    .eq('id', chatId)
-    .single();
+  try {
+    const { data: student, error: studentErr } = await supabase
+      .from('students')
+      .select('current_day, start_date, first_name')
+      .eq('id', chatId)
+      .single();
 
-  if (!student) {
-    return bot.sendMessage(chatId,
-      `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
+    if (studentErr) {
+      console.error('[LISTENING] Student lookup error:', studentErr.message);
+    }
+
+    if (!student) {
+      return bot.sendMessage(chatId,
+        `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
+    }
+
+    const dayNumber = student.start_date
+      ? calcCurrentDay(student.start_date)
+      : student.current_day;
+
+    console.log(`[LISTENING] Student ${chatId} day=${dayNumber}`);
+
+    // listening_questions 테이블에서 해당 day 문제 가져오기
+    const { data: questions, error: qErr } = await supabase
+      .from('listening_questions')
+      .select('*')
+      .eq('day_number', dayNumber)
+      .eq('is_approved', true)
+      .order('id');
+
+    if (qErr) {
+      console.error('[LISTENING] Questions query error:', qErr.message);
+      return bot.sendMessage(chatId, `❌ Error loading listening questions: ${qErr.message}`);
+    }
+
+    console.log(`[LISTENING] Found ${questions ? questions.length : 0} questions for day ${dayNumber}`);
+
+    if (!questions || questions.length === 0) {
+      return bot.sendMessage(chatId,
+        `🎧 ថ្ងៃនេះមិនមានសំណួរស្តាប់ទេ។\n(오늘 듣기 문제가 없습니다.)\n\n📌 Day: ${dayNumber}`);
+    }
+
+    // 5문제만 선택
+    const selected = questions.slice(0, 5);
+
+    await bot.sendMessage(chatId,
+      `🎧 តេស្តស្តាប់ថ្ងៃនេះ: ${selected.length} សំណួរ\n` +
+      `(듣기 퀴즈 ${selected.length}문제)\n\n` +
+      `📋 សូមអានសំណួរ → ស្តាប់សំឡេង → ជ្រើសចម្លើយ\n` +
+      `(문제 읽기 → 음성 듣기 → 답 선택)\n\n` +
+      `💪 ចាប់ផ្តើម!`
+    );
+
+    // 세션 생성
+    const { data: session, error: sessionErr } = await supabase
+      .from('quiz_sessions')
+      .insert({
+        student_id: chatId,
+        day_number: dayNumber,
+        quiz_type: 'listening',
+        total_questions: selected.length
+      })
+      .select()
+      .single();
+
+    if (sessionErr) {
+      console.error('[LISTENING] Session create error:', sessionErr.message);
+      return bot.sendMessage(chatId, `❌ Error creating quiz session: ${sessionErr.message}`);
+    }
+
+    // 문제 데이터를 세션에 저장
+    const questionsData = selected.map(q => ({
+      id: q.id,
+      audio_url: q.audio_url,
+      question_text: q.question_text,
+      options: [q.option_a, q.option_b, q.option_c, q.option_d],
+      correct_answer: q.correct_answer // 'A', 'B', 'C', 'D'
+    }));
+
+    await supabase.from('admin_config').upsert({
+      key: `lquiz_data_${session.id}`,
+      value: JSON.stringify(questionsData),
+      updated_at: new Date().toISOString()
+    });
+
+    // 첫 문제 전송
+    await sendListeningQuestion(bot, chatId, session.id, questionsData, 0);
+  } catch (err) {
+    console.error('[LISTENING] Unexpected error:', err);
+    try {
+      await bot.sendMessage(chatId, `❌ Listening quiz error: ${err.message}`);
+    } catch (e) { /* ignore send error */ }
   }
-
-  const dayNumber = student.start_date
-    ? calcCurrentDay(student.start_date)
-    : student.current_day;
-
-  // listening_questions 테이블에서 해당 day 문제 가져오기
-  // day_number = day_assignment, is_approved = true
-  const { data: questions } = await supabase
-    .from('listening_questions')
-    .select('*')
-    .eq('day_number', dayNumber)
-    .eq('is_approved', true)
-    .order('id');
-
-  if (!questions || questions.length === 0) {
-    return bot.sendMessage(chatId,
-      `🎧 ថ្ងៃនេះមិនមានសំណួរស្តាប់ទេ។\n(오늘 듣기 문제가 없습니다.)`);
-  }
-
-  // 5문제만 선택 (day_assignment 기준으로 이미 5개일 수 있지만 안전장치)
-  const selected = questions.slice(0, 5);
-
-  await bot.sendMessage(chatId,
-    `🎧 តេស្តស្តាប់ថ្ងៃនេះ: ${selected.length} សំណួរ\n` +
-    `(듣기 퀴즈 ${selected.length}문제)\n\n` +
-    `📋 សូមអានសំណួរ → ស្តាប់សំឡេង → ជ្រើសចម្លើយ\n` +
-    `(문제 읽기 → 음성 듣기 → 답 선택)\n\n` +
-    `💪 ចាប់ផ្តើម!`
-  );
-
-  // 세션 생성
-  const { data: session } = await supabase
-    .from('quiz_sessions')
-    .insert({
-      student_id: chatId,
-      day_number: dayNumber,
-      quiz_type: 'listening',
-      total_questions: selected.length
-    })
-    .select()
-    .single();
-
-  // 문제 데이터를 세션에 저장
-  const questionsData = selected.map(q => ({
-    id: q.id,
-    audio_url: q.audio_url,
-    question_text: q.question_text,
-    options: [q.option_a, q.option_b, q.option_c, q.option_d],
-    correct_answer: q.correct_answer // 'A', 'B', 'C', 'D'
-  }));
-
-  await supabase.from('admin_config').upsert({
-    key: `lquiz_data_${session.id}`,
-    value: JSON.stringify(questionsData),
-    updated_at: new Date().toISOString()
-  });
-
-  // 첫 문제 전송
-  await sendListeningQuestion(bot, chatId, session.id, questionsData, 0);
 }
 
 // ── 듣기 문제 전송 (문제+보기 → 음성 → 답 대기) ──
