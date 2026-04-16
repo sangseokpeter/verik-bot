@@ -338,14 +338,22 @@ async function handleQuizCallback(bot, query) {
 
     await bot.sendMessage(chatId, feedback);
     await bot.sendMessage(chatId,
-      `${emoji} តេស្តរួចរាល់!\n\n` +
+      `${emoji} តេស្តពាក្យរួចរាល់!\n\n` +
       `📊 លទ្ធផល: ${totalCorrect}/${totalQ} (${pct}%)\n` +
       `${khmerMsg}\n\n` +
-      `${pct < 70 ? '🔄 ពាក្យខុសនឹងចេញម្តងទៀតថ្ងៃស្អែក!' : ''}`
+      `${pct < 70 ? '🔄 ពាក្យខុសនឹងចេញម្តងទៀតថ្ងៃស្អែក!\n\n' : ''}` +
+      `🎧 ឥឡូវដល់ផ្នែកស្តាប់!\n(이제 듣기 퀴즈 시작!)`
     );
 
     // Admin에게 학생별 결과 요약 전송
     await sendQuizResultToAdmin(bot, chatId, session, totalCorrect, totalQ, pct);
+
+    // 단어 퀴즈 완료 → 듣기 퀴즈 자동 시작
+    try {
+      await startListeningQuiz(bot, chatId);
+    } catch (listenErr) {
+      console.error('[QUIZ→LISTENING] Auto-start failed:', listenErr.message);
+    }
   }
 }
 
