@@ -310,13 +310,12 @@ async function handleQuizCallback(bot, query) {
       .eq('id', sessionId)
       .single();
 
-    // 마지막 문제 정답도 반영
-    const totalCorrect = (session?.correct_answers || 0) + (isCorrect ? 1 : 0);
+    // correct_answers는 258-268행에서 이미 업데이트됨 → 그대로 사용
+    const totalCorrect = session?.correct_answers || 0;
     const totalQ = questions.length;
     const pct = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
 
     await supabase.from('quiz_sessions').update({
-      correct_answers: totalCorrect,
       is_completed: true,
       completed_at: new Date().toISOString()
     }).eq('id', sessionId);
@@ -662,12 +661,12 @@ async function handleListeningCallback(bot, query) {
       .eq('id', sessionId)
       .single();
 
-    const totalCorrect = (session?.correct_answers || 0) + (isCorrect ? 1 : 0);
+    // correct_answers는 619-630행에서 이미 업데이트됨 → 그대로 사용
+    const totalCorrect = session?.correct_answers || 0;
     const totalQ = questions.length;
     const pct = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : 0;
 
     await supabase.from('quiz_sessions').update({
-      correct_answers: totalCorrect,
       is_completed: true,
       completed_at: new Date().toISOString()
     }).eq('id', sessionId);
