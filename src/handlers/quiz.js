@@ -183,7 +183,9 @@ async function sendQuizQuestion(bot, chatId, sessionId, questions, index) {
   let text;
   if (q.type === 'listening') {
     if (q.audio_url) {
-      await bot.sendVoice(chatId, q.audio_url);
+      try { await bot.sendAudio(chatId, q.audio_url); } catch (e) {
+        console.error(`[QUIZ] Audio send error:`, e.message);
+      }
       text =
         `🎧 ${index + 1}/${questions.length}\n\n` +
         `តើពាក្យនេះមានន័យថាអ្វី?\n(들은 단어의 뜻은?)`;
@@ -420,7 +422,8 @@ async function sendQuizResultToAdmin(bot, studentId, session, correct, total, pc
 // ══════════════════════════════════════════════
 
 // ── 듣기 퀴즈 시작 ──
-async function startListeningQuiz(bot, chatIdOrMsg) {
+// overrideDay: 테스트용 day 지정 (null이면 학생 current_day 사용)
+async function startListeningQuiz(bot, chatIdOrMsg, overrideDay = null) {
   const chatId = typeof chatIdOrMsg === 'object' ? chatIdOrMsg.chat.id : chatIdOrMsg;
 
   try {
@@ -439,14 +442,14 @@ async function startListeningQuiz(bot, chatIdOrMsg) {
         `❌ សូមចុច /start ដើម្បីចុះឈ្មោះជាមុន!`);
     }
 
-    const dayNumber = student.start_date
-      ? calcCurrentDay(student.start_date)
-      : student.current_day;
+    let dayNumber = overrideDay
+      || (student.start_date ? calcCurrentDay(student.start_date) : student.current_day)
+      || 1;
 
-    console.log(`[LISTENING] Student ${chatId} day=${dayNumber}`);
+    console.log(`[LISTENING] Student ${chatId} day=${dayNumber} (override=${overrideDay || 'none'})`);
 
     // listening_questions 테이블에서 해당 day 문제 가져오기
-    const { data: questions, error: qErr } = await supabase
+    let { data: questions, error: qErr } = await supabase
       .from('listening_questions')
       .select('*')
       .eq('day_number', dayNumber)
@@ -458,21 +461,40 @@ async function startListeningQuiz(bot, chatIdOrMsg) {
       return bot.sendMessage(chatId, `❌ Error loading listening questions: ${qErr.message}`);
     }
 
-    console.log(`[LISTENING] Found ${questions ? questions.length : 0} questions for day ${dayNumber}`);
-
+    // Day에 문제가 없으면: day 1로 fallback (전체 일정 순환)
     if (!questions || questions.length === 0) {
-      return bot.sendMessage(chatId,
-        `🎧 ថ្ងៃនេះមិនមានសំណួរស្តាប់ទេ។\n(오늘 듣기 문제가 없습니다.)\n\n📌 Day: ${dayNumber}`);
+      console.log(`[LISTENING] No questions for day ${dayNumber}, falling back to day 1`);
+      const fallback = await supabase
+        .from('listening_questions')
+        .select('*')
+        .eq('day_number', 1)
+        .eq('is_approved', true)
+        .order('id');
+      questions = fallback.data;
+      if (!questions || questions.length === 0) {
+        return bot.sendMessage(chatId,
+          `🎧 ថ្ងៃនេះមិនមានសំណួរស្តាប់ទេ។\n(오늘 듣기 문제가 없습니다.)\n\n📌 Day: ${dayNumber}`);
+      }
+      dayNumber = 1; // fallback day
     }
+
+    console.log(`[LISTENING] Found ${questions.length} questions for day ${dayNumber}`);
 
     // 5문제만 선택
     const selected = questions.slice(0, 5);
 
+    // TOPIK 메타 정보 파싱 (첫 문제에서 회차 추출)
+    let examInfo = '';
+    try {
+      const meta = JSON.parse(selected[0].transcript_kr || '{}');
+      if (meta.exam_round) examInfo = ` (TOPIK ${meta.exam_round}회)`;
+    } catch (e) { /* ignore */ }
+
     await bot.sendMessage(chatId,
-      `🎧 តេស្តស្តាប់ថ្ងៃនេះ: ${selected.length} សំណួរ\n` +
-      `(듣기 퀴즈 ${selected.length}문제)\n\n` +
-      `📋 សូមអានសំណួរ → ស្តាប់សំឡេង → ជ្រើសចម្លើយ\n` +
-      `(문제 읽기 → 음성 듣기 → 답 선택)\n\n` +
+      `🎧 តេស្តស្តាប់ថ្ងៃនេះ: ${selected.length} សំណួរ${examInfo}\n` +
+      `(듣기 퀴즈 ${selected.length}문제${examInfo})\n\n` +
+      `📋 សូមស្តាប់សំឡេង → អានសំណួរ → ជ្រើសចម្លើយ\n` +
+      `(음성 듣기 → 문제 읽기 → 답 선택)\n\n` +
       `💪 ចាប់ផ្តើម!`
     );
 
@@ -512,6 +534,15 @@ async function startListeningQuiz(bot, chatIdOrMsg) {
     await sendListeningQuestion(bot, chatId, session.id, questionsData, 0);
   } catch (err) {
     console.error('[LISTENING] Unexpected error:', err);
+    // Admin 알림
+    try {
+      const { data: cfg } = await supabase
+        .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+      if (cfg?.value) {
+        await bot.sendMessage(cfg.value,
+          `⚠️ [LISTENING ERROR]\nStudent: ${chatId}\nError: ${err.message}\n${err.stack?.slice(0, 200) || ''}`);
+      }
+    } catch (e) { /* ignore admin notify error */ }
     try {
       await bot.sendMessage(chatId, `❌ Listening quiz error: ${err.message}`);
     } catch (e) { /* ignore send error */ }
@@ -531,15 +562,16 @@ async function sendListeningQuestion(bot, chatId, sessionId, questions, index) {
 
   await bot.sendMessage(chatId, text);
 
-  // Step 2: 음성 전송
+  // Step 2: 음성 전송 (MP3 → sendAudio)
   if (q.audio_url) {
     try {
-      await bot.sendVoice(chatId, q.audio_url, {
-        caption: '🔊 សូមស្តាប់រួចជ្រើសចម្លើយ (음성을 듣고 답을 선택하세요)'
+      await bot.sendAudio(chatId, q.audio_url, {
+        caption: '🔊 សូមស្តាប់រួចជ្រើសចម្លើយ (음성을 듣고 답을 선택하세요)',
+        title: `TOPIK 듣기`
       });
     } catch (err) {
-      console.error(`Voice send error for question ${q.id}:`, err.message);
-      await bot.sendMessage(chatId, `⚠️ សំឡេងមិនអាចបើកបាន (음성 재생 불가)`);
+      console.error(`[LISTENING] Audio send error for Q${q.id}:`, err.message);
+      await bot.sendMessage(chatId, `⚠️ សំឡេងមិនអាចបើកបាន (음성 재생 불가)\nURL: ${q.audio_url}`);
     }
   }
 
@@ -669,4 +701,93 @@ async function handleListeningCallback(bot, query) {
   }
 }
 
-module.exports = { startQuiz, startListeningQuiz, handleQuizCallback, handleListeningCallback };
+// ══════════════════════════════════════════════
+// 테스트 명령어
+// ══════════════════════════════════════════════
+
+// /test_listening {day} — 특정 day 듣기 5문제 테스트
+async function testListeningByDay(bot, msg, day) {
+  const chatId = msg.chat.id;
+  const dayNum = parseInt(day);
+  if (!dayNum || dayNum < 1) {
+    return bot.sendMessage(chatId, `Usage: /test_listening {day}\nExample: /test_listening 1`);
+  }
+  console.log(`[TEST_LISTENING] Admin ${chatId} testing day=${dayNum}`);
+  return startListeningQuiz(bot, chatId, dayNum);
+}
+
+// /test_listening_q {exam}_{qnum} — 특정 회차/번호 단일 문제 테스트
+async function testListeningQuestion(bot, msg, examQ) {
+  const chatId = msg.chat.id;
+  const parts = (examQ || '').split('_');
+  if (parts.length < 2) {
+    return bot.sendMessage(chatId, `Usage: /test_listening_q {exam}_{qnum}\nExample: /test_listening_q 52_1`);
+  }
+  const exam = parseInt(parts[0]);
+  const qnum = parseInt(parts[1]);
+
+  try {
+    // transcript_kr JSON에서 exam_round, question_number 매칭
+    const { data: questions, error } = await supabase
+      .from('listening_questions')
+      .select('*')
+      .eq('question_type', `TOPIK_${exam}`)
+      .order('id');
+
+    if (error) {
+      return bot.sendMessage(chatId, `❌ Query error: ${error.message}`);
+    }
+
+    // transcript_kr에서 question_number 매칭
+    const match = (questions || []).find(q => {
+      try {
+        const meta = JSON.parse(q.transcript_kr || '{}');
+        return meta.question_number === qnum;
+      } catch { return false; }
+    });
+
+    if (!match) {
+      return bot.sendMessage(chatId, `❌ Not found: TOPIK ${exam}회 Q${qnum}`);
+    }
+
+    const meta = JSON.parse(match.transcript_kr || '{}');
+    await bot.sendMessage(chatId,
+      `🧪 Test: TOPIK ${exam}회 Q${qnum}\n` +
+      `Type: ${match.question_type}\n` +
+      `Day: ${match.day_number}\n` +
+      `Active: ${match.is_approved}\n` +
+      `Audio key: ${meta.audio_key || 'N/A'}\n` +
+      `Notes: ${meta.notes || 'none'}\n` +
+      `Picture: ${meta.is_picture ? 'YES (excluded)' : 'no'}`
+    );
+
+    // 음성 전송
+    if (match.audio_url) {
+      try {
+        await bot.sendAudio(chatId, match.audio_url, {
+          caption: `🔊 TOPIK ${exam}회 Q${qnum}`,
+          title: `TOPIK_${exam}_Q${qnum}`
+        });
+      } catch (err) {
+        await bot.sendMessage(chatId, `⚠️ Audio failed: ${err.message}\nURL: ${match.audio_url}`);
+      }
+    }
+
+    // 문제 + 보기
+    const labels = ['A', 'B', 'C', 'D'];
+    let text = `❓ ${match.question_text}\n\n`;
+    text += [match.option_a, match.option_b, match.option_c, match.option_d]
+      .map((opt, i) => `${labels[i]}. ${opt}`).join('\n');
+    text += `\n\n✅ 정답: ${match.correct_answer}`;
+
+    await bot.sendMessage(chatId, text);
+  } catch (err) {
+    console.error('[TEST_LISTENING_Q] Error:', err);
+    await bot.sendMessage(chatId, `❌ Error: ${err.message}`);
+  }
+}
+
+module.exports = {
+  startQuiz, startListeningQuiz, handleQuizCallback, handleListeningCallback,
+  testListeningByDay, testListeningQuestion
+};

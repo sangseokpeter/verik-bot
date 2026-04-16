@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
 const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
-const { handleQuizCallback, handleListeningCallback, startListeningQuiz } = require('./handlers/quiz');
+const { handleQuizCallback, handleListeningCallback, startListeningQuiz, testListeningByDay, testListeningQuestion } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
 const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateMotionAll, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, handleTestCountdown, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
@@ -79,6 +79,12 @@ bot.onText(/\/ask (.+)/, (msg, match) => handleStudentAsk(bot, msg, match[1]));
 // 테스트용
 bot.onText(/\/start_day (\d+)/, (msg, match) => handleStartDay(bot, msg, match[1]));
 bot.onText(/\/test_card (\d+)/, (msg, match) => handleTestCard(bot, msg, match[1]));
+bot.onText(/\/test_listening_q\s+(.+)/, (msg, match) => {
+  if (isAdmin(msg.from.id)) testListeningQuestion(bot, msg, match[1].trim());
+});
+bot.onText(/\/test_listening(?:\s+(\d+))?$/, (msg, match) => {
+  if (isAdmin(msg.from.id)) testListeningByDay(bot, msg, match?.[1] || '1');
+});
 
 // ── 콜백 핸들러 ──
 bot.on('callback_query', async (query) => {
