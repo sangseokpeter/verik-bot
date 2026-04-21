@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#ffffff" />
-<title>VERI-K Staff</title>
+<title>VERI-K Student Status</title>
 <style>
   :root {
     --bg: #f6f6f7;
@@ -36,6 +36,9 @@
   .kpi .label { font-size: 11px; color: var(--ink-sub); letter-spacing: 0.2px; text-transform: uppercase; }
   .kpi .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
   .kpi .value small { font-size: 12px; color: var(--mute); font-weight: 500; }
+  .kpi .sub { font-size: 11px; color: var(--mute); margin-top: 2px; }
+  .kpi .sub.pos { color: var(--ok); }
+  .kpi .sub.neg { color: var(--risk); }
 
   .filters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
   .filters::-webkit-scrollbar { display: none; }
@@ -91,41 +94,57 @@
 <body>
 <div class="app">
   <header>
-    <h1>VERI-K Staff</h1>
+    <h1>VERI-K Student Status</h1>
     <span class="sub" id="sub-info">—</span>
   </header>
 
   <section class="kpi-grid">
-    <div class="kpi"><div class="label">오늘 활동</div><div class="value" id="kpi-today">—</div></div>
-    <div class="kpi"><div class="label">주간 평균 점수</div><div class="value" id="kpi-avg">—</div></div>
-    <div class="kpi"><div class="label">관심 필요</div><div class="value" id="kpi-attention">—</div></div>
-    <div class="kpi"><div class="label">평균 진도</div><div class="value" id="kpi-progress">—</div></div>
+    <div class="kpi">
+      <div class="label">Active today</div>
+      <div class="value" id="kpi-today">—</div>
+      <div class="sub" id="kpi-today-sub">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Weekly avg score</div>
+      <div class="value" id="kpi-avg">—</div>
+      <div class="sub" id="kpi-avg-sub">vs last week</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Need attention</div>
+      <div class="value" id="kpi-attention">—</div>
+      <div class="sub">2+ days inactive</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Avg progress</div>
+      <div class="value" id="kpi-progress">—</div>
+      <div class="sub">of 35 days</div>
+    </div>
   </section>
 
   <div class="filters" id="filters">
-    <button class="chip active" data-filter="all">전체</button>
-    <button class="chip" data-filter="attention">관심</button>
-    <button class="chip" data-filter="low">저점수</button>
-    <button class="chip" data-filter="top">우수</button>
+    <button class="chip active" data-filter="all">All <span data-count="all">0</span></button>
+    <button class="chip" data-filter="attention">Attention <span data-count="attention">0</span></button>
+    <button class="chip" data-filter="low">Low score <span data-count="low">0</span></button>
+    <button class="chip" data-filter="top">Top <span data-count="top">0</span></button>
   </div>
 
-  <div class="list" id="list"><div class="empty">불러오는 중…</div></div>
+  <div class="list" id="list"><div class="empty">Loading…</div></div>
 </div>
 
 <nav class="bottom-actions">
-  <button class="btn" id="btn-broadcast">미참여자 일괄 알림</button>
-  <button class="btn primary" id="btn-weekly">주간 리포트</button>
+  <button class="btn" id="btn-broadcast">Notify inactive</button>
+  <button class="btn primary" id="btn-weekly">Weekly report</button>
 </nav>
 
 <!-- Send-to-one modal -->
 <div class="modal" id="modal-send">
   <div class="sheet">
-    <h3 id="send-title">메시지 보내기</h3>
-    <div class="hint" id="send-hint">학생에게 VERI-K 봇으로 직접 전송됩니다.</div>
-    <textarea id="send-body" placeholder="메시지 내용"></textarea>
+    <h3 id="send-title">Send message</h3>
+    <div class="hint" id="send-hint">No username — sending via bot.</div>
+    <textarea id="send-body" placeholder="Type message"></textarea>
     <div class="actions">
-      <button class="btn" data-close>취소</button>
-      <button class="btn primary" id="send-confirm">보내기</button>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn primary" id="send-confirm">Send</button>
     </div>
   </div>
 </div>
@@ -133,12 +152,12 @@
 <!-- Broadcast modal -->
 <div class="modal" id="modal-broadcast">
   <div class="sheet">
-    <h3>미참여자 일괄 알림</h3>
-    <div class="hint">지난 2일 이상 미활동한 학생 전원에게 동일 메시지가 전송됩니다.</div>
-    <textarea id="broadcast-body" placeholder="예: 오늘도 VERI-K 함께 공부해요 💪"></textarea>
+    <h3>Notify inactive</h3>
+    <div class="hint">The same message will be sent to every student inactive for 2+ days.</div>
+    <textarea id="broadcast-body" placeholder="Type message"></textarea>
     <div class="actions">
-      <button class="btn" data-close>취소</button>
-      <button class="btn primary" id="broadcast-confirm">일괄 전송</button>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn primary" id="broadcast-confirm">Send to all</button>
     </div>
   </div>
 </div>
@@ -148,10 +167,10 @@
   <div class="sheet">
     <h3 id="detail-title">—</h3>
     <div class="hint" id="detail-sub">—</div>
-    <div class="section"><h4>최근 7일 퀴즈</h4><div id="detail-quizzes"></div></div>
-    <div class="section"><h4>자주 틀린 단어 Top 10</h4><div id="detail-wrongs"></div></div>
+    <div class="section"><h4>Last 7 days quiz</h4><div id="detail-quizzes"></div></div>
+    <div class="section"><h4>Frequently missed words</h4><div id="detail-wrongs"></div></div>
     <div class="actions">
-      <button class="btn" data-close>닫기</button>
+      <button class="btn" data-close>Close</button>
     </div>
   </div>
 </div>
@@ -179,10 +198,16 @@
   }
 
   function fmtDaysSince(d) {
-    if (d == null || d === 999) return '기록 없음';
-    if (d === 0) return '오늘 활동';
-    if (d === 1) return '1일 전';
-    return `${d}일 전`;
+    if (d == null || d === 999) return 'no record';
+    if (d === 0) return 'today';
+    return `${d}d ago`;
+  }
+
+  function fmtHeaderDate() {
+    const now = new Date();
+    const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${date} · ${time}`;
   }
 
   function initials(name) {
@@ -191,22 +216,51 @@
     return (parts[0][0] || '?').toUpperCase();
   }
 
-  function renderKPIs(students) {
+  function renderKPIs(students, summary) {
     const today = students.filter(s => s.days_since_active === 0).length;
-    const scored = students.filter(s => s.recent_quiz_score !== null);
-    const avg = scored.length
-      ? Math.round(scored.reduce((a, s) => a + s.recent_quiz_score, 0) / scored.length)
-      : null;
     const attention = students.filter(s => s.status !== 'active').length;
     const avgDay = students.length
       ? Math.round(students.reduce((a, s) => a + (s.current_day || 0), 0) / students.length)
       : 0;
+    const participation = students.length
+      ? Math.round((today / students.length) * 100)
+      : 0;
 
     $('kpi-today').innerHTML = `${today} <small>/ ${students.length}</small>`;
-    $('kpi-avg').innerHTML = avg != null ? `${avg}<small>%</small>` : '—';
+    $('kpi-today-sub').textContent = `${participation}% participation`;
+
+    const weekly = summary?.weekly_avg;
+    const delta = summary?.weekly_delta;
+    $('kpi-avg').innerHTML = weekly != null ? `${weekly}<small>%</small>` : '—';
+    const avgSub = $('kpi-avg-sub');
+    avgSub.classList.remove('pos', 'neg');
+    if (delta == null) {
+      avgSub.textContent = 'vs last week';
+    } else if (delta > 0) {
+      avgSub.textContent = `+${delta}% vs last week`;
+      avgSub.classList.add('pos');
+    } else if (delta < 0) {
+      avgSub.textContent = `${delta}% vs last week`;
+      avgSub.classList.add('neg');
+    } else {
+      avgSub.textContent = '±0% vs last week';
+    }
+
     $('kpi-attention').textContent = attention;
-    $('kpi-progress').innerHTML = `D-${avgDay} <small>/ 35</small>`;
-    $('sub-info').textContent = `${students.length}명`;
+    $('kpi-progress').innerHTML = `D-${avgDay}`;
+    $('sub-info').textContent = fmtHeaderDate();
+  }
+
+  function renderFilterCounts(students) {
+    const counts = {
+      all: students.length,
+      attention: students.filter(s => s.tags.includes('attention')).length,
+      low: students.filter(s => s.tags.includes('low')).length,
+      top: students.filter(s => s.tags.includes('top')).length,
+    };
+    document.querySelectorAll('[data-count]').forEach(el => {
+      el.textContent = counts[el.dataset.count] ?? 0;
+    });
   }
 
   function filterStudents(students) {
@@ -230,7 +284,7 @@
   function renderList(students) {
     const filtered = filterStudents(students);
     if (filtered.length === 0) {
-      listEl.innerHTML = '<div class="empty">조건에 맞는 학생이 없습니다.</div>';
+      listEl.innerHTML = '<div class="empty">No students match this filter.</div>';
       return;
     }
     listEl.innerHTML = filtered.map(s => {
@@ -238,8 +292,8 @@
       const scoreText = score == null ? '—' : `${score}%`;
       const meta = `D-${s.current_day}/35 · ${fmtDaysSince(s.days_since_active)} · 🔥 ${s.streak}`;
       const btn = s.telegram_username
-        ? `<a class="send-btn tme" href="https://t.me/${s.telegram_username}" target="_blank" rel="noopener" title="텔레그램 DM">${PAPER_PLANE}</a>`
-        : `<button class="send-btn" data-send="${s.chat_id}" data-name="${(s.name || '').replace(/"/g, '&quot;')}" title="봇 메시지">${CHAT_BUBBLE}</button>`;
+        ? `<a class="send-btn tme" href="https://t.me/${s.telegram_username}" target="_blank" rel="noopener" title="Opens Telegram (has username)">${PAPER_PLANE}</a>`
+        : `<button class="send-btn" data-send="${s.chat_id}" data-name="${(s.name || '').replace(/"/g, '&quot;')}" title="Send via bot (no username)">${CHAT_BUBBLE}</button>`;
       return `<div class="card" data-student="${s.id}">
         <div class="avatar">${initials(s.name)}</div>
         <div class="body" data-detail="${s.id}">
@@ -258,10 +312,11 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       STUDENTS = json.students || [];
-      renderKPIs(STUDENTS);
+      renderKPIs(STUDENTS, json.summary || {});
+      renderFilterCounts(STUDENTS);
       renderList(STUDENTS);
     } catch (err) {
-      listEl.innerHTML = `<div class="empty">불러오기 실패: ${err.message}</div>`;
+      listEl.innerHTML = `<div class="empty">Failed to load: ${err.message}</div>`;
     }
   }
 
@@ -284,7 +339,7 @@
         chat_id: Number(sendBtn.dataset.send),
         name: sendBtn.dataset.name || ''
       };
-      $('send-title').textContent = `${currentSendTarget.name}에게 메시지`;
+      $('send-title').textContent = `Message ${currentSendTarget.name}`;
       $('send-body').value = '';
       openModal('modal-send');
       setTimeout(() => $('send-body').focus(), 100);
@@ -307,7 +362,7 @@
   $('send-confirm').addEventListener('click', async () => {
     if (!currentSendTarget) return;
     const msg = $('send-body').value.trim();
-    if (!msg) { toast('메시지를 입력하세요'); return; }
+    if (!msg) { toast('Type a message first'); return; }
     $('send-confirm').disabled = true;
     try {
       const res = await fetch(API('/send_message'), {
@@ -317,10 +372,10 @@
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      toast('✅ 전송 완료');
+      toast('Sent ✓');
       closeModal('modal-send');
     } catch (err) {
-      toast(`전송 실패: ${err.message}`);
+      toast(`Failed to send: ${err.message}`);
     } finally {
       $('send-confirm').disabled = false;
     }
@@ -335,8 +390,8 @@
 
   $('broadcast-confirm').addEventListener('click', async () => {
     const msg = $('broadcast-body').value.trim();
-    if (!msg) { toast('메시지를 입력하세요'); return; }
-    if (!confirm('미참여자 전원에게 전송할까요?')) return;
+    if (!msg) { toast('Type a message first'); return; }
+    if (!confirm('Send this message to all inactive students?')) return;
     $('broadcast-confirm').disabled = true;
     try {
       const res = await fetch(API('/broadcast_inactive'), {
@@ -346,10 +401,10 @@
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      toast(`✅ ${json.sent}명 전송 (실패 ${json.failed})`);
+      toast(`Sent to ${json.sent} (failed ${json.failed})`);
       closeModal('modal-broadcast');
     } catch (err) {
-      toast(`전송 실패: ${err.message}`);
+      toast(`Failed to send: ${err.message}`);
     } finally {
       $('broadcast-confirm').disabled = false;
     }
@@ -357,20 +412,20 @@
 
   // ── Weekly report ──
   $('btn-weekly').addEventListener('click', async () => {
-    if (!confirm('관리자 텔레그램으로 주간 리포트를 보낼까요?')) return;
+    if (!confirm('Send the weekly report to the admin Telegram?')) return;
     try {
       const res = await fetch(API('/weekly_report'), { method: 'POST' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      toast('✅ 리포트 전송 완료');
+      toast('Report sent ✓');
     } catch (err) {
-      toast(`실패: ${err.message}`);
+      toast(`Failed: ${err.message}`);
     }
   });
 
   // ── Detail ──
   async function openDetail(id) {
-    $('detail-title').textContent = '불러오는 중…';
+    $('detail-title').textContent = 'Loading…';
     $('detail-sub').textContent = '';
     $('detail-quizzes').innerHTML = '';
     $('detail-wrongs').innerHTML = '';
@@ -381,19 +436,19 @@
       const json = await res.json();
       const s = json.student;
       $('detail-title').textContent = s.name || '—';
-      $('detail-sub').textContent = `D-${s.current_day}/35 · start ${s.start_date || '—'} · ${s.telegram_username ? '@' + s.telegram_username : 'no username'}`;
+      $('detail-sub').textContent = `D-${s.current_day}/35 · started ${s.start_date || '—'} · ${s.telegram_username ? '@' + s.telegram_username : 'no username'}`;
 
       const qz = json.recent_quizzes || [];
       $('detail-quizzes').innerHTML = qz.length
-        ? qz.map(q => `<div class="q-row"><span>${new Date(q.completed_at).toLocaleDateString()} · ${q.quiz_type} · Day ${q.day_number}</span><strong>${q.correct}/${q.total} (${q.score ?? '—'}%)</strong></div>`).join('')
-        : '<div class="hint">최근 7일 퀴즈 기록 없음</div>';
+        ? qz.map(q => `<div class="q-row"><span>${new Date(q.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${q.quiz_type} · Day ${q.day_number}</span><strong>${q.correct}/${q.total} (${q.score ?? '—'}%)</strong></div>`).join('')
+        : '<div class="hint">No quizzes in the last 7 days</div>';
 
       const w = json.wrong_words_top || [];
       $('detail-wrongs').innerHTML = w.length
         ? w.map(x => `<div class="w-row"><span class="k">${x.korean}</span><span>${x.meaning_khmer}</span><span class="x">×${x.wrong_count}</span></div>`).join('')
-        : '<div class="hint">틀린 단어 없음</div>';
+        : '<div class="hint">No missed words</div>';
     } catch (err) {
-      $('detail-title').textContent = '오류';
+      $('detail-title').textContent = 'Error';
       $('detail-sub').textContent = err.message;
     }
   }

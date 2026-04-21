@@ -65,7 +65,12 @@ function buildDashboardRouter(bot) {
       if (error) throw error;
 
       const ids = students.map(s => s.id);
-      if (ids.length === 0) return res.json({ students: [] });
+      if (ids.length === 0) {
+        return res.json({
+          students: [],
+          summary: { weekly_avg: null, last_week_avg: null, weekly_delta: null }
+        });
+      }
 
       // Recent quiz scores: last 10 completed sessions per student
       const { data: sessions } = await supabase
@@ -75,6 +80,23 @@ function buildDashboardRouter(bot) {
         .eq('is_completed', true)
         .order('completed_at', { ascending: false })
         .limit(ids.length * 10);
+
+      // Week-over-week: last 7d avg vs 8-14d avg (all students)
+      const nowMs = Date.now();
+      const weekAgoMs = nowMs - 7 * 24 * 3600 * 1000;
+      const twoWeeksAgoMs = nowMs - 14 * 24 * 3600 * 1000;
+      let thisTotalQ = 0, thisTotalC = 0, lastTotalQ = 0, lastTotalC = 0;
+      for (const s of sessions || []) {
+        if (!s.total_questions || !s.completed_at) continue;
+        const t = new Date(s.completed_at).getTime();
+        if (t >= weekAgoMs) { thisTotalQ += s.total_questions; thisTotalC += s.correct_answers; }
+        else if (t >= twoWeeksAgoMs) { lastTotalQ += s.total_questions; lastTotalC += s.correct_answers; }
+      }
+      const weeklyAvg = thisTotalQ ? Math.round((thisTotalC / thisTotalQ) * 100) : null;
+      const lastWeekAvg = lastTotalQ ? Math.round((lastTotalC / lastTotalQ) * 100) : null;
+      const weeklyDelta = (weeklyAvg != null && lastWeekAvg != null)
+        ? weeklyAvg - lastWeekAvg
+        : null;
 
       const scoresBy = new Map();
       for (const s of sessions || []) {
@@ -153,7 +175,10 @@ function buildDashboardRouter(bot) {
         };
       });
 
-      res.json({ students: out });
+      res.json({
+        students: out,
+        summary: { weekly_avg: weeklyAvg, last_week_avg: lastWeekAvg, weekly_delta: weeklyDelta }
+      });
     } catch (err) {
       console.error('[dashboard] students error:', err.message);
       res.status(500).json({ error: err.message });
