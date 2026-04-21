@@ -1,4 +1,5 @@
 const { supabase } = require('../config/supabase');
+const { notifyAdmins } = require('../services/notifier');
 
 // ── start_date 기준 current_day 계산 ──
 function calcCurrentDay(startDate) {
@@ -403,17 +404,12 @@ async function sendQuizResultToAdmin(bot, studentId, session, correct, total, pc
       .eq('id', studentId)
       .single();
 
-    const { data: config } = await supabase
-      .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-
-    if (!config?.value) return;
-
     const emoji = pct >= 90 ? '🏆' : pct >= 70 ? '👏' : pct >= 50 ? '💪' : '⚠️';
     const name = student?.first_name || 'Unknown';
     const handle = student?.username ? ` (@${student.username})` : '';
     const type = session?.quiz_type === 'weekly' ? 'Weekly' : 'Daily';
 
-    await bot.sendMessage(config.value,
+    await notifyAdmins(bot,
       `${emoji} Quiz Result\n` +
       `Student: ${name}${handle}\n` +
       `Type: ${type} | Day ${session?.day_number || '?'}\n` +
@@ -541,14 +537,9 @@ async function startListeningQuiz(bot, chatIdOrMsg, overrideDay = null) {
     await sendListeningQuestion(bot, chatId, session.id, questionsData, 0);
   } catch (err) {
     console.error('[LISTENING] Unexpected error:', err);
-    // Admin 알림
     try {
-      const { data: cfg } = await supabase
-        .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-      if (cfg?.value) {
-        await bot.sendMessage(cfg.value,
-          `⚠️ [LISTENING ERROR]\nStudent: ${chatId}\nError: ${err.message}\n${err.stack?.slice(0, 200) || ''}`);
-      }
+      await notifyAdmins(bot,
+        `⚠️ [LISTENING ERROR]\nStudent: ${chatId}\nError: ${err.message}\n${err.stack?.slice(0, 200) || ''}`);
     } catch (e) { /* ignore admin notify error */ }
     try {
       await bot.sendMessage(chatId, `❌ Listening quiz error: ${err.message}`);

@@ -1,9 +1,16 @@
 const { supabase } = require('../config/supabase');
 const { sendWordCards } = require('../handlers/wordcard');
 const { startQuiz } = require('../handlers/quiz');
+const { notifyAdmins } = require('./notifier');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+// Telegram group chat_ids are negative; student IDs are positive Telegram user IDs.
+// Guards any row that was accidentally inserted from a group /start.
+function isStudentChatId(id) {
+  return typeof id === 'number' && id > 0;
+}
 
 const TOPIK_DATE = new Date('2026-05-17T00:00:00');
 
@@ -48,6 +55,12 @@ async function sendMorningContent(bot) {
 
   for (const student of students) {
     try {
+      // Skip rows where the chat_id is a group (negative) — never send student content to groups.
+      if (!isStudentChatId(student.id)) {
+        console.warn(`sendMorningContent: skipping non-private chat_id ${student.id}`);
+        continue;
+      }
+
       // start_date가 null이면 등록 안내 후 스킵
       if (!student.start_date) {
         await bot.sendMessage(student.id, `❌ /start 를 먼저 눌러 등록해주세요!`);
@@ -94,14 +107,7 @@ async function sendMorningContent(bot) {
     }
   }
 
-  // Admin 알림 (영어)
-  const { data: config } = await supabase
-    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-  if (config?.value) {
-    await bot.sendMessage(config.value,
-      `✅ Morning word cards sent to ${students.length} students.`
-    );
-  }
+  await notifyAdmins(bot, `✅ Morning word cards sent to ${students.length} students.`);
 
   console.log(`📚 Morning content sent to ${students.length} students`);
 }
@@ -120,6 +126,7 @@ async function sendVideoLinks(bot) {
 
   for (const student of students) {
     try {
+      if (!isStudentChatId(student.id)) continue;
       const startD = new Date(student.start_date + 'T00:00:00');
       if (startD > today) continue;
 
@@ -189,6 +196,7 @@ async function sendEveningQuiz(bot) {
 
   for (const student of students) {
     try {
+      if (!isStudentChatId(student.id)) continue;
       const startD = new Date(student.start_date + 'T00:00:00');
       if (startD > today) continue;
 
@@ -225,15 +233,10 @@ async function sendEveningQuiz(bot) {
     }
   }
 
-  // Admin 알림 (영어)
-  const { data: config } = await supabase
-    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-  if (config?.value) {
-    await bot.sendMessage(config.value,
-      `✅ Evening ${quizType} quiz sent to ${sentCount} students.\n` +
-      `Format: ${isWeekend ? '30 weekly review' : '10 today + 5 review = 15'} questions`
-    );
-  }
+  await notifyAdmins(bot,
+    `✅ Evening ${quizType} quiz sent to ${sentCount} students.\n` +
+    `Format: ${isWeekend ? '30 weekly review' : '10 today + 5 review = 15'} questions`
+  );
 
   console.log(`📝 Evening ${quizType} quiz sent to ${sentCount} students`);
 }
@@ -306,11 +309,7 @@ async function sendCountdownCard(bot) {
     );
   } catch (err) {
     console.error('Countdown card generation failed:', err.message);
-    const { data: cfg } = await supabase
-      .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-    if (cfg?.value) {
-      await bot.sendMessage(cfg.value, `❌ Countdown card generation failed: ${err.message}`);
-    }
+    await notifyAdmins(bot, `❌ Countdown card generation failed: ${err.message}`);
     return;
   }
 
@@ -341,6 +340,7 @@ async function sendCountdownCard(bot) {
   let sent = 0, failed = 0;
   for (const student of students) {
     try {
+      if (!isStudentChatId(student.id)) continue;
       if (!student.start_date) continue;
       const startD = new Date(student.start_date + 'T00:00:00');
       if (startD > today) continue;
@@ -354,13 +354,9 @@ async function sendCountdownCard(bot) {
 
   try { fs.unlinkSync(outputPath); } catch {}
 
-  const { data: config } = await supabase
-    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-  if (config?.value) {
-    await bot.sendMessage(config.value,
-      `✅ Countdown card (${dText}) sent to ${sent} students. Failed: ${failed}`
-    );
-  }
+  await notifyAdmins(bot,
+    `✅ Countdown card (${dText}) sent to ${sent} students. Failed: ${failed}`
+  );
 
   console.log(`📅 Countdown ${dText} sent to ${sent} students (failed: ${failed})`);
 }

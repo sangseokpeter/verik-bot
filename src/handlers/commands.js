@@ -1,10 +1,20 @@
 const { supabase } = require('../config/supabase');
 const { sendWordCard } = require('./wordcard');
+const { notifyAdmins } = require('../services/notifier');
 
 // ── /start 명령어 ──
 async function handleStart(bot, msg) {
   const chatId = msg.chat.id;
   const user = msg.from;
+
+  // Block /start inside groups/channels — otherwise the group's chat_id gets
+  // inserted into `students` and starts receiving daily word cards.
+  if (msg.chat.type && msg.chat.type !== 'private') {
+    await bot.sendMessage(chatId,
+      `⚠️ /start must be sent in a private chat with the bot, not in a group.`
+    );
+    return;
+  }
 
   const { data: existing } = await supabase
     .from('students')
@@ -43,19 +53,13 @@ async function handleStart(bot, msg) {
       `💪 ចាប់ផ្តើមហើយ! អ្នកអាចធ្វើបាន!`
     );
 
-    // Admin에게 영어로 알림
-    const { data: config } = await supabase
-      .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-
-    if (config?.value) {
-      await bot.sendMessage(config.value,
-        `📋 New student registered!\n` +
-        `Name: ${user.first_name} ${user.last_name || ''}\n` +
-        `Username: @${user.username || 'N/A'}\n` +
-        `Telegram ID: ${chatId}\n` +
-        `Start Day: 1`
-      );
-    }
+    await notifyAdmins(bot,
+      `📋 New student registered!\n` +
+      `Name: ${user.first_name} ${user.last_name || ''}\n` +
+      `Username: @${user.username || 'N/A'}\n` +
+      `Telegram ID: ${chatId}\n` +
+      `Start Day: 1`
+    );
   } else {
     // 기존 학생 재방문 (크메르어)
     await bot.sendMessage(chatId,

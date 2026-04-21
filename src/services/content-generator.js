@@ -1,5 +1,6 @@
 const OpenAI = require('openai');
 const { supabase } = require('../config/supabase');
+const { notifyAdmins, notifyAdminsPhoto } = require('./notifier');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -142,12 +143,7 @@ async function generateCardsForDay(bot, dayNumber) {
 
   console.log(`Day ${dayNumber}: Generating ${words.length} card images...`);
 
-  const { data: config } = await supabase.from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-  const adminId = config?.value;
-
-  if (adminId) {
-    await bot.sendMessage(adminId, `🎨 Starting card generation for Day ${dayNumber}\nGenerating ${words.length} cards...`);
-  }
+  await notifyAdmins(bot, `🎨 Starting card generation for Day ${dayNumber}\nGenerating ${words.length} cards...`);
 
   let success = 0, failed = 0;
 
@@ -156,8 +152,8 @@ async function generateCardsForDay(bot, dayNumber) {
       const imageUrl = await generateCardImage(words[i], i, words.length, dayNumber);
       if (imageUrl) {
         success++;
-        if (adminId && (i + 1) % 5 === 0) {
-          await bot.sendMessage(adminId, `🎨 Progress: ${i + 1}/${words.length} (${words[i].korean})`);
+        if ((i + 1) % 5 === 0) {
+          await notifyAdmins(bot, `🎨 Progress: ${i + 1}/${words.length} (${words[i].korean})`);
         }
       } else { failed++; }
       await new Promise(r => setTimeout(r, 1500));
@@ -167,14 +163,12 @@ async function generateCardsForDay(bot, dayNumber) {
     }
   }
 
-  if (adminId) {
-    await bot.sendMessage(adminId, `✅ Day ${dayNumber} card generation complete!\nSuccess: ${success} / Failed: ${failed}`);
-    const { data: firstCard } = await supabase.from('words').select('*').eq('day_number', dayNumber).not('image_url', 'is', null).neq('image_url', 'skip').order('sort_order').limit(1).single();
-    if (firstCard?.image_url && firstCard.image_url !== 'skip') {
-      await bot.sendPhoto(adminId, firstCard.image_url, {
-        reply_markup: { inline_keyboard: [[{ text: '✅ OK', callback_data: `admin_cards_ok_${dayNumber}` }, { text: '🔄 Retry', callback_data: `admin_cards_redo_${dayNumber}` }]] }
-      });
-    }
+  await notifyAdmins(bot, `✅ Day ${dayNumber} card generation complete!\nSuccess: ${success} / Failed: ${failed}`);
+  const { data: firstCard } = await supabase.from('words').select('*').eq('day_number', dayNumber).not('image_url', 'is', null).neq('image_url', 'skip').order('sort_order').limit(1).single();
+  if (firstCard?.image_url && firstCard.image_url !== 'skip') {
+    await notifyAdminsPhoto(bot, firstCard.image_url, {
+      reply_markup: { inline_keyboard: [[{ text: '✅ OK', callback_data: `admin_cards_ok_${dayNumber}` }, { text: '🔄 Retry', callback_data: `admin_cards_redo_${dayNumber}` }]] }
+    });
   }
 }
 
@@ -211,15 +205,13 @@ async function generateTTSForDay(bot, dayNumber) {
   const { data: words } = await supabase.from('words').select('*').eq('day_number', dayNumber).is('audio_url', null).order('sort_order');
   if (!words || words.length === 0) { console.log(`Day ${dayNumber}: No TTS to generate`); return; }
   console.log(`Day ${dayNumber}: Generating ${words.length} TTS files...`);
-  const { data: config } = await supabase.from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-  const adminId = config?.value;
   let success = 0;
   for (const word of words) {
     const url = await generateTTSForWord(word);
     if (url) success++;
     await new Promise(r => setTimeout(r, 500));
   }
-  if (adminId) { await bot.sendMessage(adminId, `🔊 Day ${dayNumber} TTS generation complete!\n${success}/${words.length} audio files generated`); }
+  await notifyAdmins(bot, `🔊 Day ${dayNumber} TTS generation complete!\n${success}/${words.length} audio files generated`);
 }
 
 module.exports = { generateCardsForDay, generateTTSForDay, generateWordImage, generateTTSForWord };

@@ -1,4 +1,5 @@
 const { supabase } = require('../config/supabase');
+const { notifyAdmins, notifyAdminsPhoto } = require('../services/notifier');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -201,12 +202,6 @@ async function handleStudentAsk(bot, msg, question) {
     `✅ សំណួររបស់អ្នកបានផ្ញើហើយ!\n(질문이 전달되었습니다. 곧 답변드릴게요!)\n\n❓ "${question}"`
   );
 
-  // Admin에게 학생 정보 + 질문 전송
-  const { data: config } = await supabase
-    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
-
-  if (!config?.value) return;
-
   // DB에서 학생 추가 정보 조회
   const { data: student } = await supabase
     .from('students')
@@ -218,7 +213,7 @@ async function handleStudentAsk(bot, msg, question) {
   const name = student?.first_name || firstName;
   const handle = student?.username ? ` (@${student.username})` : ` (${username})`;
 
-  await bot.sendMessage(config.value,
+  await notifyAdmins(bot,
     `❓ Student Question\n` +
     `──────────────────\n` +
     `👤 ${name}${handle}\n` +
@@ -1116,6 +1111,25 @@ async function handleTestCountdown(bot, msg) {
   }
 }
 
+// ── /test_admin_notify: notifyAdmins 헬퍼가 ADMIN_IDS + ADMIN_GROUP_CHAT_ID 양쪽 도달하는지 검증 ──
+async function handleTestAdminNotify(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+  const { adminRecipients, ADMIN_IDS: IDS, ADMIN_GROUP_CHAT_ID: GRP } = require('../services/notifier');
+  const recipients = adminRecipients();
+  const stamp = new Date().toISOString();
+  const { sent, failed } = await notifyAdmins(bot,
+    `🧪 Admin notify test\n` +
+    `Time: ${stamp}\n` +
+    `Recipients: ${recipients.length} (IDS=${IDS.length}, GROUP=${GRP ?? 'unset'})`
+  );
+  await bot.sendMessage(msg.chat.id,
+    `✅ Test sent. Delivered: ${sent}/${recipients.length} (failed: ${failed}).\n` +
+    `Targets: ${recipients.join(', ') || '(none)'}`
+  );
+}
+
 // ── /broadcast_countdown: 카운트다운 카드 전 학생 수동 재전송 (cron 누락 복구용) ──
 async function handleBroadcastCountdown(bot, msg) {
   if (!isAdmin(msg.from.id)) {
@@ -1155,6 +1169,7 @@ module.exports = {
   handleNotifyUpgrade,
   handleTestCountdown,
   handleBroadcastCountdown,
+  handleTestAdminNotify,
   isAdmin,
   ADMIN_IDS
 };

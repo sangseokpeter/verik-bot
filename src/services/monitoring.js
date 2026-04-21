@@ -1,4 +1,5 @@
 const { supabase } = require('../config/supabase');
+const { notifyAdmins } = require('./notifier');
 
 // ── 미참여 학생 체크 (매일 밤 9시) ──
 async function checkInactiveStudents(bot) {
@@ -34,15 +35,6 @@ async function checkInactiveStudents(bot) {
 
   if (inactiveStudents.length === 0) return;
 
-  // 관리자에게 알림
-  const { data: config } = await supabase
-    .from('admin_config')
-    .select('value')
-    .eq('key', 'admin_chat_id')
-    .single();
-
-  if (!config?.value) return;
-
   let alertMsg = `⚠️ Inactive students alert\n\n`;
   alertMsg += `Quiz not completed for 2+ days:\n\n`;
 
@@ -55,7 +47,7 @@ async function checkInactiveStudents(bot) {
 
   alertMsg += `\nTotal: ${inactiveStudents.length} students`;
 
-  await bot.sendMessage(config.value, alertMsg);
+  await notifyAdmins(bot, alertMsg);
   console.log(`⚠️ Inactive alert: ${inactiveStudents.length} students`);
 }
 
