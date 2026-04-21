@@ -5,7 +5,7 @@ const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('
 const { handleQuizCallback, handleListeningCallback, startListeningQuiz, testListeningByDay, testListeningQuestion } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
 const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateMotionAll, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, handleTestCountdown, isAdmin } = require('./handlers/admin');
-const { sendMorningContent, sendVideoLinks, sendEveningQuiz } = require('./services/scheduler');
+const { sendMorningContent, sendVideoLinks, sendEveningQuiz, sendCountdownCard } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
 
@@ -103,6 +103,12 @@ bot.on('callback_query', async (query) => {
 });
 
 // ── Cron 스케줄 (캄보디아 UTC+7) ──
+// 캄보디아 6:55 AM = UTC 23:55 (매일) — D-Day 카운트다운
+cron.schedule('55 23 * * *', () => {
+  console.log('📅 6:55 AM Cambodia: Sending D-Day countdown card...');
+  sendCountdownCard(bot);
+});
+
 // 캄보디아 7AM = UTC 0:00 (월~토)
 cron.schedule('0 0 * * 1-6', () => {
   console.log('📚 7AM Cambodia: Sending morning content...');

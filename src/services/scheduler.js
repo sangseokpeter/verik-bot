@@ -1,6 +1,25 @@
 const { supabase } = require('../config/supabase');
 const { sendWordCards } = require('../handlers/wordcard');
 const { startQuiz } = require('../handlers/quiz');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const TOPIK_DATE = new Date('2026-05-17T00:00:00');
+
+let _pythonCmd = null;
+function getPythonCmd() {
+  if (_pythonCmd) return _pythonCmd;
+  for (const cmd of ['python3', 'python']) {
+    try {
+      execSync(`${cmd} --version`, { stdio: 'ignore' });
+      _pythonCmd = cmd;
+      return cmd;
+    } catch {}
+  }
+  _pythonCmd = 'python3';
+  return _pythonCmd;
+}
 
 // ── start_date 기준 current_day 계산 헬퍼 ──
 function calcCurrentDay(startDate) {
@@ -263,4 +282,87 @@ async function sendListeningQuestions(bot, chatId, dayNumber, count) {
   }
 }
 
-module.exports = { sendMorningContent, sendVideoLinks, sendEveningQuiz, sendListeningQuestions };
+// ── 아침 6:55: D-Day 카운트다운 카드 전송 (캄보디아 UTC+7) ──
+async function sendCountdownCard(bot) {
+  const now = new Date();
+  const cambodiaTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const todayStr = cambodiaTime.toISOString().split('T')[0];
+
+  const todayCambodia = new Date(todayStr + 'T00:00:00');
+  const dDay = Math.ceil((TOPIK_DATE - todayCambodia) / (1000 * 60 * 60 * 24));
+  const dText = dDay > 0 ? `D-${dDay}` : dDay === 0 ? 'D-Day!' : `D+${Math.abs(dDay)}`;
+
+  // ── 카드 이미지 생성 (단일 파일, 전 학생 재사용) ──
+  const tmpDir = '/tmp/verik-countdown';
+  try { if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
+  const outputPath = path.join(tmpDir, `countdown_${todayStr}.png`);
+
+  try {
+    const python = getPythonCmd();
+    const scriptPath = path.resolve(__dirname, '..', '..', 'scripts', 'generate_countdown_card.py');
+    execSync(
+      `${python} "${scriptPath}" "${todayStr}" "${outputPath}"`,
+      { timeout: 30000, stdio: 'inherit' }
+    );
+  } catch (err) {
+    console.error('Countdown card generation failed:', err.message);
+    const { data: cfg } = await supabase
+      .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+    if (cfg?.value) {
+      await bot.sendMessage(cfg.value, `❌ Countdown card generation failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (!fs.existsSync(outputPath)) {
+    console.error('Countdown card file missing after generation');
+    return;
+  }
+
+  const photoBuffer = fs.readFileSync(outputPath);
+  const caption =
+    `📅 TOPIK I ${dText}\n` +
+    `ប្រឡងនៅ ថ្ងៃអាទិត្យ ១៧ ឧសភា ២០២៦\n` +
+    `(시험일: 2026년 5월 17일 일요일)`;
+
+  const { data: students } = await supabase
+    .from('students')
+    .select('id, start_date')
+    .eq('is_active', true);
+
+  if (!students || students.length === 0) {
+    try { fs.unlinkSync(outputPath); } catch {}
+    return;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let sent = 0, failed = 0;
+  for (const student of students) {
+    try {
+      if (!student.start_date) continue;
+      const startD = new Date(student.start_date + 'T00:00:00');
+      if (startD > today) continue;
+      await bot.sendPhoto(student.id, photoBuffer, { caption });
+      sent++;
+    } catch (err) {
+      failed++;
+      console.error(`Countdown send failed for student ${student.id}:`, err.message);
+    }
+  }
+
+  try { fs.unlinkSync(outputPath); } catch {}
+
+  const { data: config } = await supabase
+    .from('admin_config').select('value').eq('key', 'admin_chat_id').single();
+  if (config?.value) {
+    await bot.sendMessage(config.value,
+      `✅ Countdown card (${dText}) sent to ${sent} students. Failed: ${failed}`
+    );
+  }
+
+  console.log(`📅 Countdown ${dText} sent to ${sent} students (failed: ${failed})`);
+}
+
+module.exports = { sendMorningContent, sendVideoLinks, sendEveningQuiz, sendListeningQuestions, sendCountdownCard };
