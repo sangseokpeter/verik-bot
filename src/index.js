@@ -4,7 +4,7 @@ const { supabase } = require('./config/supabase');
 const { handleStart, handleCommand, handleStartDay, handleTestCard } = require('./handlers/commands');
 const { handleQuizCallback, handleListeningCallback, startListeningQuiz, testListeningByDay, testListeningQuestion } = require('./handlers/quiz');
 const { handleWordCardCallback, handleTTSCallback } = require('./handlers/wordcard');
-const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateMotionAll, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, handleTestCountdown, isAdmin } = require('./handlers/admin');
+const { handleAdminCommand, handleBroadcast, handleGenerateCards, handleGenerateTTS, handleGenerateAll, handleStudentAsk, handleReply, handleStats, handleGenerateMotion, handleGenerateMotionAll, handleGenerateImages, handleGenerateImagesAll, handleApproveImages, handleRedoImage, handleImageStatus, handleTriggerReview, handleRunPipeline, handlePipelineStatus, handleNotifyUpgrade, handleTestCountdown, handleBroadcastCountdown, isAdmin } = require('./handlers/admin');
 const { sendMorningContent, sendVideoLinks, sendEveningQuiz, sendCountdownCard } = require('./services/scheduler');
 const { checkInactiveStudents } = require('./services/monitoring');
 const { sendSundayReview } = require('./services/review');
@@ -72,6 +72,7 @@ bot.onText(/\/run_pipeline/, (msg) => handleRunPipeline(bot, msg));
 bot.onText(/\/pipeline_status/, (msg) => handlePipelineStatus(bot, msg));
 bot.onText(/\/notify_upgrade/, (msg) => handleNotifyUpgrade(bot, msg));
 bot.onText(/\/test_countdown/, (msg) => handleTestCountdown(bot, msg));
+bot.onText(/\/broadcast_countdown/, (msg) => handleBroadcastCountdown(bot, msg));
 
 // ── 학생 문의 ──
 bot.onText(/\/ask (.+)/, (msg, match) => handleStudentAsk(bot, msg, match[1]));

@@ -1116,6 +1116,23 @@ async function handleTestCountdown(bot, msg) {
   }
 }
 
+// ── /broadcast_countdown: 카운트다운 카드 전 학생 수동 재전송 (cron 누락 복구용) ──
+async function handleBroadcastCountdown(bot, msg) {
+  if (!isAdmin(msg.from.id)) {
+    return bot.sendMessage(msg.chat.id, '⛔ Admin only.');
+  }
+
+  await bot.sendMessage(msg.chat.id, '📅 Broadcasting countdown card to all active students...');
+  try {
+    const { sendCountdownCard } = require('../services/scheduler');
+    await sendCountdownCard(bot);
+    await bot.sendMessage(msg.chat.id, '✅ Countdown broadcast complete.');
+  } catch (err) {
+    console.error('Broadcast countdown error:', err.message);
+    await bot.sendMessage(msg.chat.id, `❌ Broadcast failed: ${err.message}`);
+  }
+}
+
 module.exports = {
   handleAdminCommand,
   handleBroadcast,
@@ -1137,6 +1154,7 @@ module.exports = {
   handlePipelineStatus,
   handleNotifyUpgrade,
   handleTestCountdown,
+  handleBroadcastCountdown,
   isAdmin,
   ADMIN_IDS
 };
