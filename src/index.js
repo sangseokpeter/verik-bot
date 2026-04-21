@@ -150,11 +150,25 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 
-// ── Health check ──
-const http = require('http');
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'healthy', bot: 'VERI-K', uptime: process.uptime() }));
-}).listen(process.env.PORT || 3000);
+// ── HTTP server: health check + staff dashboard ──
+const express = require('express');
+const app = express();
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '64kb' }));
 
-console.log(`🌐 Health check on port ${process.env.PORT || 3000}`);
+app.get('/', (_req, res) => {
+  res.json({ status: 'healthy', bot: 'VERI-K', uptime: process.uptime() });
+});
+
+const { buildDashboardRouter } = require('./routes/dashboard');
+app.use(buildDashboardRouter(bot));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🌐 HTTP server on port ${PORT}`);
+  if ((process.env.STAFF_DASHBOARD_TOKEN || '').trim()) {
+    console.log('🔐 Staff dashboard enabled at /dashboard/<TOKEN>');
+  } else {
+    console.warn('⚠️ STAFF_DASHBOARD_TOKEN not set — dashboard disabled (all /dashboard routes 404).');
+  }
+});

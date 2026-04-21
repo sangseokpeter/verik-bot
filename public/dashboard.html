@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<title>VERI-K Staff</title>
+<style>
+  :root {
+    --bg: #f6f6f7;
+    --panel: #ffffff;
+    --border: #e4e5e8;
+    --ink: #1d1f24;
+    --ink-sub: #5b6069;
+    --mute: #8a8f99;
+    --accent: #1d4ed8;
+    --accent-ink: #ffffff;
+    --ok: #12a05c;
+    --warn: #d97706;
+    --risk: #c62828;
+    --chip-bg: #f0f1f3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+    -webkit-font-smoothing: antialiased; font-size: 14px; line-height: 1.4; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; cursor: pointer; }
+  .app { max-width: 480px; margin: 0 auto; padding: 16px 14px 120px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -0.2px; }
+  header .sub { font-size: 12px; color: var(--mute); }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .kpi .label { font-size: 11px; color: var(--ink-sub); letter-spacing: 0.2px; text-transform: uppercase; }
+  .kpi .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .kpi .value small { font-size: 12px; color: var(--mute); font-weight: 500; }
+
+  .filters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip { flex-shrink: 0; padding: 8px 12px; background: var(--chip-bg); color: var(--ink); border: 1px solid transparent; border-radius: 999px; font-size: 13px; font-weight: 500; }
+  .chip.active { background: var(--ink); color: #fff; }
+
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; align-items: center; gap: 10px; }
+  .avatar { flex-shrink: 0; width: 36px; height: 36px; border-radius: 999px; background: #e8ebf0; color: var(--ink-sub); font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .card .body { flex: 1; min-width: 0; }
+  .card .row1 { display: flex; align-items: center; gap: 6px; }
+  .card .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.active { background: var(--ok); }
+  .dot.warning { background: var(--warn); }
+  .dot.risk { background: var(--risk); }
+  .card .meta { font-size: 12px; color: var(--ink-sub); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .score { flex-shrink: 0; font-weight: 700; font-size: 14px; min-width: 40px; text-align: right; }
+  .score.top { color: var(--ok); }
+  .score.low { color: var(--risk); }
+  .score.null { color: var(--mute); font-weight: 500; font-size: 12px; }
+  .send-btn { flex-shrink: 0; width: 36px; height: 36px; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-sub); }
+  .send-btn.tme { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .send-btn svg { width: 16px; height: 16px; }
+
+  .empty { text-align: center; padding: 40px 10px; color: var(--mute); font-size: 13px; }
+
+  .bottom-actions { position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--border); padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    display: flex; gap: 8px; max-width: 480px; margin: 0 auto; }
+  .btn { flex: 1; padding: 11px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 13px; }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.3); display: none; align-items: flex-end; justify-content: center; z-index: 100; }
+  .modal.open { display: flex; }
+  .sheet { background: #fff; width: 100%; max-width: 480px; border-radius: 14px 14px 0 0; padding: 16px 14px calc(14px + env(safe-area-inset-bottom)); max-height: 85vh; overflow-y: auto; }
+  .sheet h3 { margin: 0 0 4px; font-size: 16px; }
+  .sheet .hint { font-size: 12px; color: var(--mute); margin-bottom: 12px; }
+  .sheet textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: inherit; resize: vertical; min-height: 120px; }
+  .sheet .actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  .section { margin-top: 14px; }
+  .section h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .q-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .q-row:last-child { border-bottom: none; }
+  .w-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+  .w-row .k { font-weight: 600; }
+  .w-row .x { color: var(--risk); font-variant-numeric: tabular-nums; }
+
+  .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 200; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>VERI-K Staff</h1>
+    <span class="sub" id="sub-info">—</span>
+  </header>
+
+  <section class="kpi-grid">
+    <div class="kpi"><div class="label">오늘 활동</div><div class="value" id="kpi-today">—</div></div>
+    <div class="kpi"><div class="label">주간 평균 점수</div><div class="value" id="kpi-avg">—</div></div>
+    <div class="kpi"><div class="label">관심 필요</div><div class="value" id="kpi-attention">—</div></div>
+    <div class="kpi"><div class="label">평균 진도</div><div class="value" id="kpi-progress">—</div></div>
+  </section>
+
+  <div class="filters" id="filters">
+    <button class="chip active" data-filter="all">전체</button>
+    <button class="chip" data-filter="attention">관심</button>
+    <button class="chip" data-filter="low">저점수</button>
+    <button class="chip" data-filter="top">우수</button>
+  </div>
+
+  <div class="list" id="list"><div class="empty">불러오는 중…</div></div>
+</div>
+
+<nav class="bottom-actions">
+  <button class="btn" id="btn-broadcast">미참여자 일괄 알림</button>
+  <button class="btn primary" id="btn-weekly">주간 리포트</button>
+</nav>
+
+<!-- Send-to-one modal -->
+<div class="modal" id="modal-send">
+  <div class="sheet">
+    <h3 id="send-title">메시지 보내기</h3>
+    <div class="hint" id="send-hint">학생에게 VERI-K 봇으로 직접 전송됩니다.</div>
+    <textarea id="send-body" placeholder="메시지 내용"></textarea>
+    <div class="actions">
+      <button class="btn" data-close>취소</button>
+      <button class="btn primary" id="send-confirm">보내기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Broadcast modal -->
+<div class="modal" id="modal-broadcast">
+  <div class="sheet">
+    <h3>미참여자 일괄 알림</h3>
+    <div class="hint">지난 2일 이상 미활동한 학생 전원에게 동일 메시지가 전송됩니다.</div>
+    <textarea id="broadcast-body" placeholder="예: 오늘도 VERI-K 함께 공부해요 💪"></textarea>
+    <div class="actions">
+      <button class="btn" data-close>취소</button>
+      <button class="btn primary" id="broadcast-confirm">일괄 전송</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal" id="modal-detail">
+  <div class="sheet">
+    <h3 id="detail-title">—</h3>
+    <div class="hint" id="detail-sub">—</div>
+    <div class="section"><h4>최근 7일 퀴즈</h4><div id="detail-quizzes"></div></div>
+    <div class="section"><h4>자주 틀린 단어 Top 10</h4><div id="detail-wrongs"></div></div>
+    <div class="actions">
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  // ── Extract token from URL path ──
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const dashIdx = parts.indexOf('dashboard');
+  const TOKEN = dashIdx >= 0 ? parts[dashIdx + 1] || '' : '';
+  const API = (suffix) => `/api/dashboard/${TOKEN}${suffix}`;
+
+  const $ = (id) => document.getElementById(id);
+  const listEl = $('list');
+  let STUDENTS = [];
+  let CURRENT_FILTER = 'all';
+
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function fmtDaysSince(d) {
+    if (d == null || d === 999) return '기록 없음';
+    if (d === 0) return '오늘 활동';
+    if (d === 1) return '1일 전';
+    return `${d}일 전`;
+  }
+
+  function initials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return (parts[0][0] || '?').toUpperCase();
+  }
+
+  function renderKPIs(students) {
+    const today = students.filter(s => s.days_since_active === 0).length;
+    const scored = students.filter(s => s.recent_quiz_score !== null);
+    const avg = scored.length
+      ? Math.round(scored.reduce((a, s) => a + s.recent_quiz_score, 0) / scored.length)
+      : null;
+    const attention = students.filter(s => s.status !== 'active').length;
+    const avgDay = students.length
+      ? Math.round(students.reduce((a, s) => a + (s.current_day || 0), 0) / students.length)
+      : 0;
+
+    $('kpi-today').innerHTML = `${today} <small>/ ${students.length}</small>`;
+    $('kpi-avg').innerHTML = avg != null ? `${avg}<small>%</small>` : '—';
+    $('kpi-attention').textContent = attention;
+    $('kpi-progress').innerHTML = `D-${avgDay} <small>/ 35</small>`;
+    $('sub-info').textContent = `${students.length}명`;
+  }
+
+  function filterStudents(students) {
+    if (CURRENT_FILTER === 'all') return students;
+    if (CURRENT_FILTER === 'attention') return students.filter(s => s.tags.includes('attention'));
+    if (CURRENT_FILTER === 'low') return students.filter(s => s.tags.includes('low'));
+    if (CURRENT_FILTER === 'top') return students.filter(s => s.tags.includes('top'));
+    return students;
+  }
+
+  function scoreClass(score) {
+    if (score == null) return 'null';
+    if (score >= 80) return 'top';
+    if (score < 60) return 'low';
+    return '';
+  }
+
+  const PAPER_PLANE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>';
+  const CHAT_BUBBLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+
+  function renderList(students) {
+    const filtered = filterStudents(students);
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="empty">조건에 맞는 학생이 없습니다.</div>';
+      return;
+    }
+    listEl.innerHTML = filtered.map(s => {
+      const score = s.recent_quiz_score;
+      const scoreText = score == null ? '—' : `${score}%`;
+      const meta = `D-${s.current_day}/35 · ${fmtDaysSince(s.days_since_active)} · 🔥 ${s.streak}`;
+      const btn = s.telegram_username
+        ? `<a class="send-btn tme" href="https://t.me/${s.telegram_username}" target="_blank" rel="noopener" title="텔레그램 DM">${PAPER_PLANE}</a>`
+        : `<button class="send-btn" data-send="${s.chat_id}" data-name="${(s.name || '').replace(/"/g, '&quot;')}" title="봇 메시지">${CHAT_BUBBLE}</button>`;
+      return `<div class="card" data-student="${s.id}">
+        <div class="avatar">${initials(s.name)}</div>
+        <div class="body" data-detail="${s.id}">
+          <div class="row1"><span class="dot ${s.status}"></span><span class="name">${s.name}</span></div>
+          <div class="meta">${meta}</div>
+        </div>
+        <div class="score ${scoreClass(score)}">${scoreText}</div>
+        ${btn}
+      </div>`;
+    }).join('');
+  }
+
+  async function loadStudents() {
+    try {
+      const res = await fetch(API('/students'));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      STUDENTS = json.students || [];
+      renderKPIs(STUDENTS);
+      renderList(STUDENTS);
+    } catch (err) {
+      listEl.innerHTML = `<div class="empty">불러오기 실패: ${err.message}</div>`;
+    }
+  }
+
+  // ── Filter chips ──
+  $('filters').addEventListener('click', (ev) => {
+    const chip = ev.target.closest('.chip');
+    if (!chip) return;
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    CURRENT_FILTER = chip.dataset.filter;
+    renderList(STUDENTS);
+  });
+
+  // ── Card tap → detail / send ──
+  let currentSendTarget = null;
+  listEl.addEventListener('click', (ev) => {
+    const sendBtn = ev.target.closest('[data-send]');
+    if (sendBtn) {
+      currentSendTarget = {
+        chat_id: Number(sendBtn.dataset.send),
+        name: sendBtn.dataset.name || ''
+      };
+      $('send-title').textContent = `${currentSendTarget.name}에게 메시지`;
+      $('send-body').value = '';
+      openModal('modal-send');
+      setTimeout(() => $('send-body').focus(), 100);
+      return;
+    }
+    const detail = ev.target.closest('[data-detail]');
+    if (detail) openDetail(Number(detail.dataset.detail));
+  });
+
+  // ── Modal helpers ──
+  function openModal(id) { $(id).classList.add('open'); }
+  function closeModal(id) { $(id).classList.remove('open'); }
+  document.addEventListener('click', (ev) => {
+    if (ev.target.matches('[data-close]') || ev.target.classList.contains('modal')) {
+      document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    }
+  });
+
+  // ── Send one ──
+  $('send-confirm').addEventListener('click', async () => {
+    if (!currentSendTarget) return;
+    const msg = $('send-body').value.trim();
+    if (!msg) { toast('메시지를 입력하세요'); return; }
+    $('send-confirm').disabled = true;
+    try {
+      const res = await fetch(API('/send_message'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: currentSendTarget.chat_id, message: msg })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      toast('✅ 전송 완료');
+      closeModal('modal-send');
+    } catch (err) {
+      toast(`전송 실패: ${err.message}`);
+    } finally {
+      $('send-confirm').disabled = false;
+    }
+  });
+
+  // ── Broadcast ──
+  $('btn-broadcast').addEventListener('click', () => {
+    $('broadcast-body').value = '';
+    openModal('modal-broadcast');
+    setTimeout(() => $('broadcast-body').focus(), 100);
+  });
+
+  $('broadcast-confirm').addEventListener('click', async () => {
+    const msg = $('broadcast-body').value.trim();
+    if (!msg) { toast('메시지를 입력하세요'); return; }
+    if (!confirm('미참여자 전원에게 전송할까요?')) return;
+    $('broadcast-confirm').disabled = true;
+    try {
+      const res = await fetch(API('/broadcast_inactive'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: msg })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      toast(`✅ ${json.sent}명 전송 (실패 ${json.failed})`);
+      closeModal('modal-broadcast');
+    } catch (err) {
+      toast(`전송 실패: ${err.message}`);
+    } finally {
+      $('broadcast-confirm').disabled = false;
+    }
+  });
+
+  // ── Weekly report ──
+  $('btn-weekly').addEventListener('click', async () => {
+    if (!confirm('관리자 텔레그램으로 주간 리포트를 보낼까요?')) return;
+    try {
+      const res = await fetch(API('/weekly_report'), { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      toast('✅ 리포트 전송 완료');
+    } catch (err) {
+      toast(`실패: ${err.message}`);
+    }
+  });
+
+  // ── Detail ──
+  async function openDetail(id) {
+    $('detail-title').textContent = '불러오는 중…';
+    $('detail-sub').textContent = '';
+    $('detail-quizzes').innerHTML = '';
+    $('detail-wrongs').innerHTML = '';
+    openModal('modal-detail');
+    try {
+      const res = await fetch(API(`/student/${id}`));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const s = json.student;
+      $('detail-title').textContent = s.name || '—';
+      $('detail-sub').textContent = `D-${s.current_day}/35 · start ${s.start_date || '—'} · ${s.telegram_username ? '@' + s.telegram_username : 'no username'}`;
+
+      const qz = json.recent_quizzes || [];
+      $('detail-quizzes').innerHTML = qz.length
+        ? qz.map(q => `<div class="q-row"><span>${new Date(q.completed_at).toLocaleDateString()} · ${q.quiz_type} · Day ${q.day_number}</span><strong>${q.correct}/${q.total} (${q.score ?? '—'}%)</strong></div>`).join('')
+        : '<div class="hint">최근 7일 퀴즈 기록 없음</div>';
+
+      const w = json.wrong_words_top || [];
+      $('detail-wrongs').innerHTML = w.length
+        ? w.map(x => `<div class="w-row"><span class="k">${x.korean}</span><span>${x.meaning_khmer}</span><span class="x">×${x.wrong_count}</span></div>`).join('')
+        : '<div class="hint">틀린 단어 없음</div>';
+    } catch (err) {
+      $('detail-title').textContent = '오류';
+      $('detail-sub').textContent = err.message;
+    }
+  }
+
+  loadStudents();
+})();
+</script>
+</body>
+</html>
