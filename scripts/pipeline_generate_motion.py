@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 VERI-K Pipeline: Generate motion card MP4s for all 1,207 words.
 - Reuses V.02 Premium Gold design from generate_motion_card.py
@@ -26,6 +26,12 @@ sys.path.insert(0, SCRIPT_DIR)
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', os.environ.get('SUPABASE_SECRET_KEY', ''))
 SUPABASE_BUCKET = os.environ.get('SUPABASE_BUCKET', 'word-cards')
+
+R2_ACCOUNT_ID = os.environ.get('R2_ACCOUNT_ID', '')
+R2_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY', '')
+R2_BUCKET = os.environ.get('R2_BUCKET', 'verik-media')
+R2_PUBLIC_BASE_URL = os.environ.get('R2_PUBLIC_BASE_URL', '').rstrip('/')
 
 
 def emit(event):
@@ -62,16 +68,22 @@ def fetch_words():
 
 
 def upload_video(mp4_bytes, storage_path):
-    import requests
-    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{storage_path}"
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {SUPABASE_KEY}',
-        'Content-Type': 'video/mp4',
-        'x-upsert': 'true',
-    }
-    r = requests.post(url, headers=headers, data=mp4_bytes, timeout=120)
-    return r.status_code in (200, 201)
+    import boto3
+    from botocore.config import Config
+    import io
+    s3 = boto3.client(
+        's3',
+        endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        config=Config(signature_version='s3v4'),
+        region_name='auto',
+    )
+    s3.upload_fileobj(
+        io.BytesIO(mp4_bytes), R2_BUCKET, storage_path,
+        ExtraArgs={'ContentType': 'video/mp4'}
+    )
+    return True
 
 
 def update_video_url(word_id, video_url):
@@ -165,7 +177,7 @@ def main():
             if not upload_video(mp4_bytes, video_path):
                 raise RuntimeError("Video upload failed")
 
-            video_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{video_path}"
+            video_url = f"{R2_PUBLIC_BASE_URL}/{video_path}"
             update_video_url(word_id, video_url)
 
             ok += 1
@@ -191,3 +203,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
