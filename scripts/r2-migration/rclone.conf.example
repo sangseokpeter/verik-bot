@@ -1,0 +1,44 @@
+# rclone config template for the Supabase Storage → Cloudflare R2 bulk copy.
+#
+# Copy this file to ~/.config/rclone/rclone.conf (Linux/macOS) or
+# %APPDATA%\rclone\rclone.conf (Windows) — or pass --config to rclone — and
+# fill in the credential fields below.
+#
+# After it's saved, the migration command is (run with --dry-run first):
+#
+#   rclone sync supabase:word-cards r2:verik-media --progress --dry-run
+#   rclone sync supabase:word-cards r2:verik-media --progress
+#
+# Replace `verik-media` with whatever you named the R2 bucket (R2_BUCKET).
+
+# ── Source: Supabase Storage (S3-compatible endpoint) ─────────────────────────
+[supabase]
+type = s3
+provider = Other
+# Found in Supabase dashboard → Project Settings → Storage → S3 connection
+# Endpoint format: https://<project-ref>.supabase.co/storage/v1/s3
+endpoint = https://rtaltczlzccupsuzemcj.supabase.co/storage/v1/s3
+# Generate an S3 access key + secret in Supabase dashboard → Storage → S3 access keys
+access_key_id =
+secret_access_key =
+# Region must match what Supabase shows for your project (e.g. ap-southeast-1).
+region =
+# Required for some S3-compatible providers; safe default for Supabase.
+force_path_style = true
+
+# ── Destination: Cloudflare R2 ────────────────────────────────────────────────
+[r2]
+type = s3
+provider = Cloudflare
+# Replace <account_id> with R2_ACCOUNT_ID (Cloudflare dashboard → R2 → Account details)
+endpoint = https://<account_id>.r2.cloudflarestorage.com
+# Create an R2 API token (R2 → Manage R2 API Tokens). Use the same values
+# you'll paste into Railway as R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY.
+access_key_id =
+secret_access_key =
+# R2 ignores region but the SDK requires a value.
+region = auto
+# R2 uses path-style URLs.
+force_path_style = true
+# Optional: skip server-side checksum validation if you hit signature errors.
+# disable_checksum = true

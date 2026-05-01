@@ -1,5 +1,7 @@
 const OpenAI = require('openai');
+const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { supabase } = require('../config/supabase');
+const { r2, bucket: R2_BUCKET, getPublicUrl: r2PublicUrl } = require('../config/r2');
 const { notifyAdmins, notifyAdminsPhoto } = require('./notifier');
 const { execSync } = require('child_process');
 const fs = require('fs');
@@ -103,22 +105,24 @@ async function generateCardImage(word, index, total, dayNumber) {
     return null;
   }
 
-  // 3. Supabase Storage 업로드
+  // 3. R2 업로드
   const imageBuffer = fs.readFileSync(outputPath);
   const fileName = `cards/day${dayNumber}/${word.id}_card.png`;
-  
-  const { error: uploadError } = await supabase.storage
-    .from('word-cards')
-    .upload(fileName, imageBuffer, { contentType: 'image/png', upsert: true });
 
-  if (uploadError) {
+  try {
+    await r2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: fileName,
+      Body: imageBuffer,
+      ContentType: 'image/png',
+    }));
+  } catch (uploadError) {
     console.error(`Upload error for ${word.korean}:`, uploadError.message);
     return null;
   }
 
-  const { data: urlData } = supabase.storage.from('word-cards').getPublicUrl(fileName);
   // Telegram 캐시 방지: timestamp 추가
-  const urlWithTimestamp = `${urlData.publicUrl}?t=${Date.now()}`;
+  const urlWithTimestamp = `${r2PublicUrl(fileName)}?t=${Date.now()}`;
   await supabase.from('words').update({ image_url: urlWithTimestamp }).eq('id', word.id);
 
   // 임시 파일 정리
@@ -184,11 +188,15 @@ async function generateTTSForWord(word, maxRetries = 3) {
         throw new Error(`TTS returned empty audio (${audioBuffer.length} bytes)`);
       }
       const fileName = `audio/day${word.day_number}/${word.id}.mp3`;
-      const { error } = await supabase.storage.from('word-cards').upload(fileName, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
-      if (error) { throw new Error(`Upload failed: ${error.message}`); }
-      const { data: urlData } = supabase.storage.from('word-cards').getPublicUrl(fileName);
-      await supabase.from('words').update({ audio_url: urlData.publicUrl }).eq('id', word.id);
-      return urlData.publicUrl;
+      await r2.send(new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: fileName,
+        Body: audioBuffer,
+        ContentType: 'audio/mpeg',
+      }));
+      const publicUrl = r2PublicUrl(fileName);
+      await supabase.from('words').update({ audio_url: publicUrl }).eq('id', word.id);
+      return publicUrl;
     } catch (err) {
       console.error(`TTS error for ${word.korean} (attempt ${attempt}/${maxRetries}):`, err.message);
       if (attempt < maxRetries) {
